@@ -74,5 +74,3 @@ Feel free to open issues or pull requests! We're still learning, so be nice 😊
 MIT License - because we're cool like that
 
 ---
-
-Built with 💻 and 🍕 during late-night coding sessions

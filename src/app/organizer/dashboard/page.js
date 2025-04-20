@@ -1,69 +1,28 @@
 'use client';
 
- import { useState, useEffect, useRef } from 'react';
- import { useRouter } from 'next/navigation';
+import RoleGuard from '@/components/RoleGuard'
 
- export default function OrganizerDashboard() {
-  const [userRole, setUserRole] = useState(null);
-  const router = useRouter();
-  const isMounted = useRef(false);
-
-  useEffect(() => {
-   isMounted.current = true;
-
-   const getRole = async () => {
-    try {
-     const response = await fetch('/api/user', {
-      method: 'GET',
-      headers: {
-       'Content-Type': 'application/json',
-      },
-     });
-
-     if (isMounted.current) {
-      if (response.ok) {
-       const data = await response.json();
-       setUserRole(data.role);
-      } else if (response.status === 401) {
-       router.push('/login');
-      } else {
-       console.error('Error fetching user data:', response.status, response.statusText);
-       router.push('/');
-      }
-     }
-    } catch (error) {
-     console.error('Error fetching user data:', error);
-     if (isMounted.current) {
-      router.push('/login');
-     }
-    }
-   };
-
-   getRole();
-
-   return () => {
-    isMounted.current = false;
-   };
-  }, [router]);
-
-  useEffect(() => {
-   if (userRole && userRole !== 'organizer') {
-    router.push('/');
-   }
-  }, [userRole, router]); // Run this effect whenever userRole changes
-
-  if (!userRole) {
-   return <div>Loading...</div>;
-  }
-
-  if (userRole !== 'organizer') {
-   return null; // We've already triggered the redirect in the useEffect
-  }
-
+export default function OrganizerDashboard() {
   return (
-   <div>
-    <h1>Organizer Dashboard</h1>
-    {/* ... */}
-   </div>
-  );
- }
+    <RoleGuard allowedRoles={['organizer', 'admin']}>
+      <div className="min-h-screen bg-gray-100 p-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-8">Organizer Dashboard</h1>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Organizer dashboard content */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4">My Events</h2>
+            <p className="text-gray-600">Manage your events</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4">Event Analytics</h2>
+            <p className="text-gray-600">View event statistics</p>
+          </div>
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h2 className="text-xl font-semibold mb-4">Attendee Management</h2>
+            <p className="text-gray-600">Manage event attendees</p>
+          </div>
+        </div>
+      </div>
+    </RoleGuard>
+  )
+}

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -11,30 +12,21 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError('');
 
     try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
+      const result = await signIn('credentials', {
+        username,
+        password,
+        redirect: false,
       });
 
-      const data = await response.json();
-
-      if (response.ok) {
-        // Authentication successful
-        const { message } = data; // Assuming your API sends back a message
-        console.log(message); // Log the success message (optional)
-
-        // No need to handle role-based routing here.
-        // The server sets the cookie, and Middleware handles redirection.
-        router.push('/dashboard'); // Redirect to a general dashboard
-      } else {
-        // Authentication failed
-        setError(data.message || 'Invalid credentials');
+      if (result?.error) {
+        setError('Invalid credentials');
+        return;
       }
+
+      router.push('/');
     } catch (err) {
       setError('An error occurred while logging in.');
       console.error(err);

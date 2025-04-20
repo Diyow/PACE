@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useSession, signOut } from 'next-auth/react'
 import {
   Dialog,
   DialogPanel,
@@ -11,6 +12,10 @@ import {
   PopoverButton,
   PopoverGroup,
   PopoverPanel,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuItems,
 } from '@headlessui/react'
 import {
   ArrowPathIcon,
@@ -20,16 +25,19 @@ import {
   FingerPrintIcon,
   SquaresPlusIcon,
   XMarkIcon,
+  UserCircleIcon,
+  HomeIcon,
 } from '@heroicons/react/24/outline'
 import { ChevronDownIcon, PhoneIcon, PlayCircleIcon } from '@heroicons/react/20/solid'
 
 const products = [
   { name: 'Analytics', description: 'Get a better understanding of your traffic', href: '#', icon: ChartPieIcon },
   { name: 'Engagement', description: 'Speak directly to your customers', href: '#', icon: CursorArrowRaysIcon },
-  { name: 'Security', description: 'Your customers’ data will be safe and secure', href: '#', icon: FingerPrintIcon },
+  { name: 'Security', description: 'Your customers\' data will be safe and secure', href: '#', icon: FingerPrintIcon },
   { name: 'Integrations', description: 'Connect with third-party tools', href: '#', icon: SquaresPlusIcon },
   { name: 'Automations', description: 'Build strategic funnels that will convert', href: '#', icon: ArrowPathIcon },
 ]
+
 const callsToAction = [
   { name: 'Watch demo', href: '#', icon: PlayCircleIcon },
   { name: 'Contact sales', href: '#', icon: PhoneIcon },
@@ -37,6 +45,20 @@ const callsToAction = [
 
 export default function Headers() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { data: session, status } = useSession()
+
+  // Function to get dashboard link based on role
+  const getDashboardLink = () => {
+    if (!session?.user?.role) return '/'
+    switch (session.user.role) {
+      case 'admin':
+        return '/admin/dashboard'
+      case 'organizer':
+        return '/organizer/dashboard'
+      default:
+        return '/'
+    }
+  }
 
   return (
     <header className="bg-white">
@@ -117,9 +139,61 @@ export default function Headers() {
           </a>
         </PopoverGroup>
         <div className="hidden lg:flex lg:flex-1 lg:justify-end">
-          <a href="/login" className="text-sm/6 font-semibold text-gray-900">
-            Log in <span aria-hidden="true">&rarr;</span>
-          </a>
+          {status === 'authenticated' ? (
+            <Menu as="div" className="relative">
+              <MenuButton className="flex items-center gap-x-1 text-sm/6 font-semibold text-gray-900">
+                <UserCircleIcon className="h-8 w-8 text-gray-400" />
+                <span className="ml-2">{session.user.name}</span>
+                <ChevronDownIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
+              </MenuButton>
+              <MenuItems className="absolute right-0 z-10 mt-2 w-48 origin-top-right rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+                {/* Dashboard option - only show for admin and organizer */}
+                {(session.user.role === 'admin' || session.user.role === 'organizer') && (
+                  <MenuItem>
+                    {({ active }) => (
+                      <a
+                        href={getDashboardLink()}
+                        className={`${
+                          active ? 'bg-gray-100' : ''
+                        } flex items-center px-4 py-2 text-sm text-gray-700`}
+                      >
+                        <HomeIcon className="mr-2 h-5 w-5" />
+                        Dashboard
+                      </a>
+                    )}
+                  </MenuItem>
+                )}
+                <MenuItem>
+                  {({ active }) => (
+                    <a
+                      href="/profile"
+                      className={`${
+                        active ? 'bg-gray-100' : ''
+                      } block px-4 py-2 text-sm text-gray-700`}
+                    >
+                      Profile
+                    </a>
+                  )}
+                </MenuItem>
+                <MenuItem>
+                  {({ active }) => (
+                    <button
+                      onClick={() => signOut()}
+                      className={`${
+                        active ? 'bg-gray-100' : ''
+                      } block w-full px-4 py-2 text-left text-sm text-gray-700`}
+                    >
+                      Sign out
+                    </button>
+                  )}
+                </MenuItem>
+              </MenuItems>
+            </Menu>
+          ) : (
+            <a href="/login" className="text-sm/6 font-semibold text-gray-900">
+              Log in <span aria-hidden="true">&rarr;</span>
+            </a>
+          )}
         </div>
       </nav>
       <Dialog open={mobileMenuOpen} onClose={setMobileMenuOpen} className="lg:hidden">
@@ -184,12 +258,39 @@ export default function Headers() {
                 </a>
               </div>
               <div className="py-6">
-                <a
-                  href="/login"
-                  className="-mx-3 block rounded-lg px-3 py-2.5 text-base/7 font-semibold text-gray-900 hover:bg-gray-50"
-                >
-                  Log in
-                </a>
+                {status === 'authenticated' ? (
+                  <div className="space-y-2">
+                    {/* Dashboard option in mobile menu - only show for admin and organizer */}
+                    {(session.user.role === 'admin' || session.user.role === 'organizer') && (
+                      <a
+                        href={getDashboardLink()}
+                        className="-mx-3 flex items-center rounded-lg px-3 py-2.5 text-base/7 font-semibold text-gray-900 hover:bg-gray-50"
+                      >
+                        <HomeIcon className="mr-2 h-5 w-5" />
+                        Dashboard
+                      </a>
+                    )}
+                    <a
+                      href="/profile"
+                      className="-mx-3 block rounded-lg px-3 py-2.5 text-base/7 font-semibold text-gray-900 hover:bg-gray-50"
+                    >
+                      Profile
+                    </a>
+                    <button
+                      onClick={() => signOut()}
+                      className="-mx-3 block w-full rounded-lg px-3 py-2.5 text-left text-base/7 font-semibold text-gray-900 hover:bg-gray-50"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                ) : (
+                  <a
+                    href="/login"
+                    className="-mx-3 block rounded-lg px-3 py-2.5 text-base/7 font-semibold text-gray-900 hover:bg-gray-50"
+                  >
+                    Log in
+                  </a>
+                )}
               </div>
             </div>
           </div>

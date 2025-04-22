@@ -5,42 +5,59 @@ import React, { useState } from 'react';
 import TicketCard from './TicketCard';
 
 function MyTicketsSection() {
- const [activeTab, setActiveTab] = useState('Upcoming');
+ const [activeTab, setActiveTab] = useState('upcoming');
+ 
  // Replace with your actual ticket data
- const upcomingTickets = [
-  { id: 1, name: 'Event Name 1', date: '01 Jan, 2025 - 00:00' },
-  { id: 2, name: 'Event Name 2', date: '01 Jan, 2025 - 00:00' },
- ];
- const pastTickets = [
-  { id: 3, name: 'Event Name 3', date: '01 Jan, 2024 - 00:00' },
+ const tickets = [
+  { id: 1, eventName: 'Event Name', date: '01 Jan, 2025 - 00:00' },
+  { id: 2, eventName: 'Event Name', date: '01 Jan, 2025 - 00:00' },
+  { id: 3, eventName: 'Event Name', date: '01 Jan, 2025 - 00:00' }
  ];
 
  return (
-  <section className="mt-8">
-   <h2>My Tickets</h2>
-   <div className="flex border-b">
-    <button
-     className={`py-2 px-4 ${activeTab === 'Upcoming' ? 'border-b-2 border-blue-500 font-semibold' : 'text-gray-600'}`}
-     onClick={() => setActiveTab('Upcoming')}
-    >
-     Upcoming
-    </button>
-    <button
-     className={`py-2 px-4 ${activeTab === 'Past' ? 'border-b-2 border-blue-500 font-semibold' : 'text-gray-600'}`}
-     onClick={() => setActiveTab('Past')}
-    >
-     Past
-    </button>
-   </div>
-   <div className="mt-4">
-    {activeTab === 'Upcoming' && upcomingTickets.map(ticket => (
-     <TicketCard key={ticket.id} ticket={ticket} />
-    ))}
-    {activeTab === 'Past' && pastTickets.map(ticket => (
-     <TicketCard key={ticket.id} ticket={ticket} isPast={true} />
-    ))}
-    {activeTab === 'Upcoming' && upcomingTickets.length === 0 && <p className="text-gray-500">No upcoming tickets.</p>}
-    {activeTab === 'Past' && pastTickets.length === 0 && <p className="text-gray-500">No past tickets.</p>}
+  <section className="py-12 bg-gradient-to-b from-white to-sky-50/30">
+   <div className="max-w-7xl mx-auto px-4">
+    <h2 className="text-2xl font-semibold text-gray-900 mb-6">
+     My Tickets
+     <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-600">
+      {tickets.length}
+     </span>
+    </h2>
+    
+    <div className="inline-flex p-1 rounded-xl bg-sky-50/50 backdrop-blur-sm mb-8">
+     <button
+      onClick={() => setActiveTab('upcoming')}
+      className={`relative px-8 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+       activeTab === 'upcoming'
+         ? 'text-sky-700 bg-white shadow-sm'
+         : 'text-sky-600 hover:text-sky-700'
+      }`}
+     >
+       Upcoming
+       {activeTab === 'upcoming' && (
+         <span className="absolute inset-0 rounded-lg bg-white shadow-sm transition-all duration-200" style={{ zIndex: -1 }} />
+       )}
+     </button>
+     <button
+      onClick={() => setActiveTab('past')}
+      className={`relative px-8 py-2 text-sm font-medium rounded-lg transition-all duration-200 ${
+       activeTab === 'past'
+         ? 'text-sky-700 bg-white shadow-sm'
+         : 'text-sky-600 hover:text-sky-700'
+      }`}
+     >
+       Past
+       {activeTab === 'past' && (
+         <span className="absolute inset-0 rounded-lg bg-white shadow-sm transition-all duration-200" style={{ zIndex: -1 }} />
+       )}
+     </button>
+    </div>
+
+    <div className="space-y-6">
+     {tickets.map(ticket => (
+      <TicketCard key={ticket.id} ticket={ticket} />
+     ))}
+    </div>
    </div>
   </section>
  );

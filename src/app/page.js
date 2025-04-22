@@ -5,10 +5,10 @@ import WaitlistSection from '../components/WaitlistSection';
 
 export default function Home() {
   return (
-    <div className="container mx-auto p-4">
-     <EventsSection />
-     <MyTicketsSection />
-     <WaitlistSection />
-    </div>
-   );
+    <main>
+      <EventsSection />
+      <MyTicketsSection />
+      <WaitlistSection />
+    </main>
+  );
 }

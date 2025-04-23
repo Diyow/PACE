@@ -1,76 +1,99 @@
-# 🎓 PACE - Our Next.js Project
+# PACE - Event Management System
 
-Hey there! 👋 This is our university project built with Next.js. We're learning and building cool stuff together! 
+## Project Overview
+PACE (Platform for Advanced Community Events) is a comprehensive event management system developed as part of the Software Engineering Principles course (BIT216) at the University. This project demonstrates the application of software engineering principles, methodologies, and best practices in developing a real-world web application.
 
-## 🎯 What We're Building
+## Features
+- **User Authentication & Authorization**
+  - Role-based access control (Admin, Organizer, User)
+  - Secure login system
 
-- ⚡️ A fast and responsive web app
-- 🎨 A clean and modern interface
-- 🔄 Real-time updates (because who likes refreshing?)
-- 📱 Works on all devices (mobile-friendly FTW!)
-- 🛠️ Using the latest tech we're learning in class
+- **Event Management**
+  - Event creation and management
+  - Event search and filtering
+  - Event details and registration
 
-## 🛠️ What We're Using
+- **Ticket Management**
+  - Ticket purchasing
+  - Waitlist functionality
 
-- [Next.js](https://nextjs.org) - Our main framework
-- [Geist](https://vercel.com/font) - A cool font we found
-- [Vercel](https://vercel.com) - For easy deployment
+- **Organizer Dashboard**
+  - Event analytics
+  - Attendee management
+  - Event status tracking
+  - Revenue reports
 
-## 🚀 Let's Get Started!
+- **Admin Dashboard**
+  - User management
+  - Organizer registration
+  - System monitoring
+  - Analytics overview
 
-### What You Need
+## Technical Stack
+- **Frontend**
+  - Next.js 14
+  - React
+  - Tailwind CSS
+  - Heroicons
 
-- Node.js (v14 or later)
-- Any package manager (npm, yarn, pnpm, or bun)
+- **Backend**
+  - Next.js API Routes
+  - MongoDB
+  - NextAuth.js
 
-### How to Run It
+- **Development Tools**
+  - Git
+  - VS Code
+  - npm
 
-1. Get the code:
+## Getting Started
+
+### Prerequisites
+- Node.js (v18 or higher)
+- npm (v9 or higher)
+- MongoDB
+
+### Installation
+1. Clone the repository
 ```bash
 git clone https://github.com/yourusername/pace.git
 cd pace
 ```
 
-2. Install stuff:
+2. Install dependencies
 ```bash
 npm install
-# or
-yarn install
-# or
-pnpm install
-# or
-bun install
 ```
 
-3. Start the server:
+3. Set up environment variables
+Create a `.env.local` file in the root directory with the following variables:
+```env
+MONGODB_URI=your_mongodb_uri
+NEXTAUTH_SECRET=your_nextauth_secret
+NEXTAUTH_URL=http://localhost:3000
+```
+
+4. Run the development server
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) and see what we built! 🎉
 
-## 📚 Helpful Links
+4. **Version Control**
+   - Git workflow
+   - Branch management
+   - Code review process
 
-- [Next.js Docs](https://nextjs.org/docs) - When we get stuck
-- [Learn Next.js](https://nextjs.org/learn) - For when we need to learn more
-- [Next.js GitHub](https://github.com/vercel/next.js) - To see how the pros do it
+5. **Documentation**
+   - Code documentation
+   - API documentation
+   - User documentation
 
-## 🚀 Deployment
+## Contributing
+This project is developed as part of a university course. For academic purposes, contributions are limited to course participants.
 
-We're using [Vercel](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) because it's super easy to use!
+## License
+This project is created for educational purposes as part of the Software Engineering Principles course (BIT216).
 
-## 🤝 Want to Help?
-
-Feel free to open issues or pull requests! We're still learning, so be nice 😊
-
-## 📝 License
-
-MIT License - because we're cool like that
 
 ---

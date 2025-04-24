@@ -10,8 +10,7 @@ export default function RecentActivity() {
       title: 'New organizer registered',
       time: '2 hours ago',
       icon: UserCircleIcon,
-      details: 'Tech Events Co. has been registered as a new organizer.',
-      priority: 'high'
+      details: 'Tech Events Co. has been registered as a new organizer.'
     },
     {
       id: 2,
@@ -19,8 +18,7 @@ export default function RecentActivity() {
       title: 'New event created',
       time: '4 hours ago',
       icon: CalendarIcon,
-      details: 'Music Festival 2024 has been created with 500 tickets.',
-      priority: 'medium'
+      details: 'Music Festival 2024 has been created with 500 tickets.'
     },
     {
       id: 3,
@@ -28,8 +26,7 @@ export default function RecentActivity() {
       title: 'Analytics updated',
       time: '6 hours ago',
       icon: ChartBarIcon,
-      details: 'Platform analytics have been updated with new metrics.',
-      priority: 'low'
+      details: 'Platform analytics have been updated with new metrics.'
     }
   ])
 
@@ -38,19 +35,6 @@ export default function RecentActivity() {
 
   const handleActivityClick = (activity) => {
     setExpandedActivity(expandedActivity?.id === activity.id ? null : activity)
-  }
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case 'high':
-        return 'text-red-600 bg-red-50'
-      case 'medium':
-        return 'text-yellow-600 bg-yellow-50'
-      case 'low':
-        return 'text-green-600 bg-green-50'
-      default:
-        return 'text-gray-600 bg-gray-50'
-    }
   }
 
   const filteredActivities = activities.filter(activity => 
@@ -103,15 +87,12 @@ export default function RecentActivity() {
               whileHover={{ scale: 1.01 }}
               transition={{ duration: 0.2 }}
             >
-              <div className={`p-2 rounded-lg ${getPriorityColor(activity.priority)}`}>
-                <activity.icon className="h-5 w-5" />
+              <div className="p-2 bg-sky-50 rounded-lg">
+                <activity.icon className="h-5 w-5 text-sky-600" />
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-gray-900">{activity.title}</p>
-                  <span className={`text-xs px-2 py-1 rounded-full ${getPriorityColor(activity.priority)}`}>
-                    {activity.priority}
-                  </span>
                 </div>
                 <p className="text-sm text-gray-500">{activity.time}</p>
               </div>

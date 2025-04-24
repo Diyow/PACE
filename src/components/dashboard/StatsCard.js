@@ -24,16 +24,9 @@ export default function StatsCard({ title, value, icon: Icon, trend, trendValue 
             {value}
           </motion.p>
         </div>
-        <motion.div 
-          className="p-3 bg-sky-50 rounded-lg"
-          whileHover={{ 
-            scale: 1.05,
-            backgroundColor: "#e0f2fe"
-          }}
-          transition={{ duration: 0.2 }}
-        >
-          <Icon className="h-6 w-6 text-sky-600" />
-        </motion.div>
+        <div className="p-3">
+          <Icon className="h-12 w-12 text-sky-600" />
+        </div>
       </div>
 
       <div className="mt-4 flex items-center text-sm">

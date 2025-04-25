@@ -53,4 +53,30 @@ export async function POST(req) {
       { status: 500 }
     )
   }
+}
+
+export async function GET() {
+  try {
+    const { db } = await connectToDatabase()
+    const organizers = await db.collection('users')
+      .find({ role: 'organizer' })
+      .project({
+        _id: 1,
+        fullName: 1,
+        email: 1,
+        phoneNumber: 1,
+        organizationName: 1,
+        status: 1,
+        createdAt: 1
+      })
+      .toArray()
+    
+    return NextResponse.json(organizers)
+  } catch (error) {
+    console.error('Error fetching organizers:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch organizers' },
+      { status: 500 }
+    )
+  }
 } 

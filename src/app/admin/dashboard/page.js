@@ -2,125 +2,88 @@
 
 import { useState } from 'react'
 import RoleGuard from '@/components/RoleGuard'
-import { UserCircleIcon, CalendarIcon, ChartBarIcon } from '@heroicons/react/24/outline'
+import { 
+  UserCircleIcon, 
+  CalendarIcon, 
+  ChartBarIcon,
+  UserGroupIcon,
+  TicketIcon,
+  BuildingOfficeIcon,
+  ArrowTrendingUpIcon,
+  ClockIcon
+} from '@heroicons/react/24/outline'
 import Link from 'next/link'
+import StatsCard from '@/components/dashboard/StatsCard'
+import OrganizersList from '@/components/dashboard/OrganizersList'
+import RecentActivity from '@/components/dashboard/RecentActivity'
 
 export default function AdminDashboard() {
+  const stats = [
+    {
+      title: 'Total Organizers',
+      value: '12',
+      icon: BuildingOfficeIcon,
+      trendValue: '+2 this month'
+    },
+    {
+      title: 'Active Events',
+      value: '24',
+      icon: CalendarIcon,
+      trendValue: '+5 this week'
+    },
+    {
+      title: 'Total Tickets',
+      value: '1,234',
+      icon: TicketIcon,
+      trendValue: '+123 today'
+    },
+    {
+      title: 'Active Users',
+      value: '892',
+      icon: UserCircleIcon,
+      trendValue: '+45 this week'
+    }
+  ]
+
   return (
     <RoleGuard allowedRoles={['admin']}>
-      <div className="min-h-screen bg-gray-50 p-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Administrator Dashboard</h1>
-        
-        {/* Register Event Organizer Button */}
-        <Link 
-          href="/admin/register-organizer"
-          className="inline-block bg-gray-900 text-white px-6 py-2 rounded-md mb-8 hover:bg-gray-800 transition-colors"
-        >
-          Register Event Organizer
-        </Link>
-
-        {/* Organizers Section */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Organizers</h2>
-          
-          {/* Organizer Cards */}
-          <div className="space-y-4">
-            <div className="bg-white p-6 rounded-lg shadow-sm flex justify-between items-center">
-              <div>
-                <h3 className="font-semibold">Organizer Name</h3>
-                <p className="text-gray-500 text-sm">Organization Name</p>
-                <p className="text-gray-500 text-sm">Email</p>
-              </div>
-              <button className="text-gray-400 hover:text-gray-600">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                </svg>
-              </button>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow-sm flex justify-between items-center">
-              <div>
-                <h3 className="font-semibold">Organizer Name</h3>
-                <p className="text-gray-500 text-sm">Organization Name</p>
-                <p className="text-gray-500 text-sm">Email</p>
-              </div>
-              <button className="text-gray-400 hover:text-gray-600">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-                </svg>
-              </button>
-            </div>
+      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50">
+        {/* Header Section */}
+        <div className="bg-gradient-to-r from-sky-600 to-blue-600 text-white p-8 shadow-lg">
+          <div className="max-w-7xl mx-auto">
+            <h1 className="text-4xl font-bold mb-2">Administrator Dashboard</h1>
+            <p className="text-sky-100">Welcome back! Here's what's happening with your events platform.</p>
           </div>
         </div>
 
-        {/* Analytics Reports Section */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h3 className="text-xl font-semibold mb-4">Analytics Report</h3>
-            <div className="flex justify-between items-center">
-              <span className="text-4xl font-bold">0</span>
-              <span className="text-3xl">😊</span>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h3 className="text-xl font-semibold mb-4">Analytics Report</h3>
-            <div className="flex justify-between items-center">
-              <span className="text-4xl font-bold">0</span>
-              <span className="text-3xl">😊</span>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h3 className="text-xl font-semibold mb-4">Analytics Report</h3>
-            <div className="flex justify-between items-center">
-              <span className="text-4xl font-bold">0</span>
-              <span className="text-3xl">😊</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Section Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Recent Activity */}
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h3 className="text-xl font-semibold mb-4">Recent Activity</h3>
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <UserCircleIcon className="h-8 w-8 text-gray-400" />
-                <div>
-                  <p className="font-semibold">Activity History 1</p>
-                  <p className="text-sm text-gray-500">User/Admin - 0 Hours ago</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <CalendarIcon className="h-8 w-8 text-gray-400" />
-                <div>
-                  <p className="font-semibold">Activity History 1</p>
-                  <p className="text-sm text-gray-500">User/Admin - 0 Hours ago</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <ChartBarIcon className="h-8 w-8 text-gray-400" />
-                <div>
-                  <p className="font-semibold">Activity History 1</p>
-                  <p className="text-sm text-gray-500">User/Admin - 0 Hours ago</p>
-                </div>
-              </div>
-            </div>
+        <div className="max-w-7xl mx-auto p-8">
+          {/* Quick Actions */}
+          <div className="mb-8">
+            <Link 
+              href="/admin/register-organizer"
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-sky-500 to-blue-500 text-white rounded-lg shadow-md hover:from-sky-600 hover:to-blue-600 transition-all duration-200 transform hover:-translate-y-0.5"
+            >
+              <UserGroupIcon className="h-5 w-5 mr-2" />
+              Register Event Organizer
+            </Link>
           </div>
 
-          {/* System Overview */}
-          <div className="bg-white p-6 rounded-lg shadow-sm">
-            <h3 className="text-xl font-semibold mb-4">System Overview</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span>System Status</span>
-                <span className="bg-gray-100 px-3 py-1 rounded-md text-sm">Operational</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Active Users</span>
-                <span>32</span>
-              </div>
+          {/* Stats Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {stats.map((stat, index) => (
+              <StatsCard key={index} {...stat} />
+            ))}
+          </div>
+
+          {/* Main Content Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Organizers Section */}
+            <div className="lg:col-span-2">
+              <OrganizersList />
             </div>
+
+            {/* Recent Activity */}
+            <RecentActivity />
           </div>
         </div>
       </div>

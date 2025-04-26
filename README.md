@@ -1,36 +1,99 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# PACE - Event Management System
+
+## Project Overview
+PACE (Platform for Advanced Community Events) is a comprehensive event management system developed as part of the Software Engineering Principles course (BIT216) at the University. This project demonstrates the application of software engineering principles, methodologies, and best practices in developing a real-world web application.
+
+## Features
+- **User Authentication & Authorization**
+  - Role-based access control (Admin, Organizer, User)
+  - Secure login system
+
+- **Event Management**
+  - Event creation and management
+  - Event search and filtering
+  - Event details and registration
+
+- **Ticket Management**
+  - Ticket purchasing
+  - Waitlist functionality
+
+- **Organizer Dashboard**
+  - Event analytics
+  - Attendee management
+  - Event status tracking
+  - Revenue reports
+
+- **Admin Dashboard**
+  - User management
+  - Organizer registration
+  - System monitoring
+  - Analytics overview
+
+## Technical Stack
+- **Frontend**
+  - Next.js 14
+  - React
+  - Tailwind CSS
+  - Heroicons
+
+- **Backend**
+  - Next.js API Routes
+  - MongoDB
+  - NextAuth.js
+
+- **Development Tools**
+  - Git
+  - VS Code
+  - npm
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Node.js (v18 or higher)
+- npm (v9 or higher)
+- MongoDB
 
+### Installation
+1. Clone the repository
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/yourusername/pace.git
+cd pace
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+3. Set up environment variables
+Create a `.env.local` file in the root directory with the following variables:
+```env
+MONGODB_URI=your_mongodb_uri
+NEXTAUTH_SECRET=your_nextauth_secret
+NEXTAUTH_URL=http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Run the development server
+```bash
+npm run dev
+```
 
-## Learn More
 
-To learn more about Next.js, take a look at the following resources:
+4. **Version Control**
+   - Git workflow
+   - Branch management
+   - Code review process
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+5. **Documentation**
+   - Code documentation
+   - API documentation
+   - User documentation
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Contributing
+This project is developed as part of a university course. For academic purposes, contributions are limited to course participants.
 
-## Deploy on Vercel
+## License
+This project is created for educational purposes as part of the Software Engineering Principles course (BIT216).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---

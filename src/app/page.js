@@ -33,7 +33,7 @@ export default function Home() {
               <div className="flex flex-col items-center p-6 bg-white/10 backdrop-blur-sm rounded-2xl">
                 <CalendarIcon className="h-8 w-8 text-sky-200" />
                 <h3 className="mt-4 text-lg font-semibold">Discover Events</h3>
-                <p className="mt-2 text-sm text-sky-100">Find and explore exciting events near you</p>
+                <p className="mt-2 text-sm text-sky-100">Find and explore exciting events</p>
               </div>
               <div className="flex flex-col items-center p-6 bg-white/10 backdrop-blur-sm rounded-2xl">
                 <TicketIcon className="h-8 w-8 text-sky-200" />
@@ -62,7 +62,9 @@ export default function Home() {
           </div>
         </div>
         
-        <EventsSection />
+        <div id="events">
+          <EventsSection />
+        </div>
         
         <div className="relative">
           <div className="absolute inset-0 flex items-center" aria-hidden="true">
@@ -73,7 +75,9 @@ export default function Home() {
           </div>
         </div>
         
-        <MyTicketsSection />
+        <div id="my-tickets">
+          <MyTicketsSection />
+        </div>
         
         <div className="relative">
           <div className="absolute inset-0 flex items-center" aria-hidden="true">
@@ -84,7 +88,9 @@ export default function Home() {
           </div>
         </div>
         
-        <WaitlistSection />
+        <div id="waitlist">
+          <WaitlistSection />
+        </div>
       </div>
 
       <ScrollToTopButton />

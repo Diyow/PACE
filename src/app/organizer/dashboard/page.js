@@ -1,28 +1,44 @@
 'use client';
 
-import RoleGuard from '@/components/RoleGuard'
+import RoleGuard from '@/components/RoleGuard';
+import Link from 'next/link';
+import { UserGroupIcon } from '@heroicons/react/24/outline';
+import AnalyticsCards from '@/components/dashboard/AnalyticsCards';
+import RevenueChart from '@/components/dashboard/RevenueChart';
+import EventsList from '@/components/dashboard/EventsList';
 
 export default function OrganizerDashboard() {
   return (
     <RoleGuard allowedRoles={['organizer', 'admin']}>
-      <div className="min-h-screen bg-gray-100 p-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-8">Organizer Dashboard</h1>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Organizer dashboard content */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">My Events</h2>
-            <p className="text-gray-600">Manage your events</p>
+      <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50">
+        {/* Header Section */}
+        <div className="bg-gradient-to-r from-sky-600 to-blue-600 text-white p-8 shadow-lg">
+          <div className="max-w-7xl mx-auto">
+            <h1 className="text-4xl font-bold mb-2">Event Organizer Dashboard</h1>
+            <p className="text-sky-100">Welcome back! Here's what's happening with your events.</p>
           </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Event Analytics</h2>
-            <p className="text-gray-600">View event statistics</p>
+        </div>
+
+        <div className="max-w-7xl mx-auto p-8">
+          {/* Quick Actions */}
+          <div className="mb-8">
+            <Link 
+              href="/organizer/create-event"
+              className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-sky-500 to-blue-500 text-white rounded-lg shadow-md hover:from-sky-600 hover:to-blue-600 transition-all duration-200 transform hover:-translate-y-0.5"
+            >
+              <UserGroupIcon className="h-5 w-5 mr-2" />
+              Create New Event
+            </Link>
           </div>
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-xl font-semibold mb-4">Attendee Management</h2>
-            <p className="text-gray-600">Manage event attendees</p>
+
+          {/* Dashboard Content */}
+          <div className="space-y-8">
+            <AnalyticsCards />
+            <EventsList />
+            <RevenueChart />
           </div>
         </div>
       </div>
     </RoleGuard>
-  )
+  );
 }

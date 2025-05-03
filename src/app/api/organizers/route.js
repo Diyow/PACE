@@ -1,82 +1,107 @@
-import { NextResponse } from 'next/server'
-import { connectToDatabase } from '@/lib/mongodb'
-import bcrypt from 'bcryptjs'
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { db } from '@/lib/db';
+import bcrypt from 'bcrypt';
+import { sendEmail, getOrganizerRegistrationEmail } from '@/utils/email';
 
-export async function POST(req) {
+export async function POST(request) {
   try {
-    const { fullName, email, phoneNumber, organizationName, username, password } = await req.json()
-
-    const { db } = await connectToDatabase()
-
+    // Check authentication and authorization
+    const session = await getServerSession(authOptions);
+    
+    if (!session || session.user.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    const data = await request.json();
+    const { fullName, email, phoneNumber, organizationName, username, password } = data;
+    
+    // Validate required fields
+    if (!fullName || !email || !phoneNumber || !organizationName || !username || !password) {
+      return NextResponse.json(
+        { error: 'All fields are required' },
+        { status: 400 }
+      );
+    }
+    
     // Check if username or email already exists
-    const existingUser = await db.collection('users').findOne({
-      $or: [
-        { username: username },
-        { email: email }
-      ]
-    })
-
+    const existingUser = await db.user.findFirst({
+      where: {
+        OR: [
+          { username },
+          { email }
+        ]
+      }
+    });
+    
     if (existingUser) {
       return NextResponse.json(
         { error: 'Username or email already exists' },
         { status: 400 }
-      )
+      );
     }
-
-    // Hash the password
-    const hashedPassword = await bcrypt.hash(password, 10)
-
-    // Create the user document
-    const user = {
-      fullName,
-      email,
-      phoneNumber,
-      organizationName,
-      username,
-      password: hashedPassword,
-      role: 'organizer',
-      createdAt: new Date(),
-      updatedAt: new Date()
+    
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create user with organizer role
+    const newUser = await db.user.create({
+      data: {
+        fullName,
+        email,
+        phoneNumber,
+        username,
+        password: hashedPassword,
+        role: 'organizer',
+        organizer: {
+          create: {
+            organizationName
+          }
+        }
+      }
+    });
+    
+    // Send email notification
+    try {
+      const { subject, html } = getOrganizerRegistrationEmail({
+        fullName,
+        username,
+        email,
+        organizationName
+      });
+      
+      await sendEmail({
+        to: email,
+        subject,
+        html
+      });
+    } catch (emailError) {
+      // Log the error but don't fail the registration
+      console.error('Failed to send registration email:', emailError);
+      // You could store this in a queue for retry later
     }
-
-    // Insert the user into the database
-    await db.collection('users').insertOne(user)
-
-    return NextResponse.json(
-      { message: 'Organizer registered successfully' },
-      { status: 201 }
-    )
+    
+    // Return success response without sensitive data
+    return NextResponse.json({
+      message: 'Organizer registered successfully',
+      user: {
+        id: newUser.id,
+        fullName: newUser.fullName,
+        email: newUser.email,
+        username: newUser.username,
+        role: newUser.role
+      }
+    });
+    
   } catch (error) {
-    console.error('Registration error:', error)
+    console.error('Error registering organizer:', error);
     return NextResponse.json(
       { error: 'Failed to register organizer' },
       { status: 500 }
-    )
+    );
   }
 }
-
-export async function GET() {
-  try {
-    const { db } = await connectToDatabase()
-    const organizers = await db.collection('users')
-      .find({ role: 'organizer' })
-      .project({
-        _id: 1,
-        fullName: 1,
-        email: 1,
-        phoneNumber: 1,
-        organizationName: 1,
-        status: 1,
-        createdAt: 1
-      })
-      .toArray()
-    
-    return NextResponse.json(organizers)
-  } catch (error) {
-    console.error('Error fetching organizers:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch organizers' },
-      { status: 500 }
-    )
-  }
-} 

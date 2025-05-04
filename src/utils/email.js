@@ -42,8 +42,10 @@ export const getOrganizerRegistrationEmail = (organizer) => {
         <p><strong>Your account details:</strong></p>
         <ul style="list-style-type: none; padding-left: 20px;">
           <li><strong>Username:</strong> ${organizer.username}</li>
+          <li><strong>Password:</strong> ${organizer.password}</li>
           <li><strong>Organization:</strong> ${organizer.organizationName}</li>
           <li><strong>Email:</strong> ${organizer.email}</li>
+          <li><strong>Phone Number:</strong> ${organizer.phoneNumber}</li>
         </ul>
         <p>You can now log in to your account using your username and the password provided by the administrator.</p>
         <div style="text-align: center; margin: 30px 0;">

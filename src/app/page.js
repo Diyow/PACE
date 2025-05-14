@@ -94,7 +94,6 @@ export default function Home() {
       </div>
 
       <ScrollToTopButton />
-      <Footer />
     </main>
   );
 }

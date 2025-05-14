@@ -114,7 +114,7 @@ const CreateEventPage = () => {
     <RoleGuard allowedRoles={['organizer', 'admin']}>
       <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 py-8 px-4 sm:px-6 lg:px-8">
         {/* Header Section */}
-        <div className="max-w-5xl mx-auto mb-8">
+        <div className="max-w-6xl mx-auto mb-8">
           <button
             onClick={() => router.back()}
             className="flex items-center text-sky-600 hover:text-sky-700 mb-6 transition-colors font-medium"
@@ -127,10 +127,10 @@ const CreateEventPage = () => {
           <p className="mt-2 text-gray-600">Fill in the details to create your new event</p>
         </div>
         
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
             {/* Form Section */}
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-md overflow-hidden">
+            <div className="lg:col-span-3 bg-white rounded-xl shadow-md overflow-hidden">
               {/* Tabs Navigation */}
               <div className="border-b border-gray-200">
                 <nav className="-mb-px flex space-x-8 px-6" aria-label="Tabs">
@@ -339,26 +339,6 @@ const CreateEventPage = () => {
                     </div>
                   )}
                   
-                  {activeTab === 'additional' && (
-                    <div className="py-8 text-center">
-                      <div className="mx-auto max-w-md">
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">Additional Details</h3>
-                        <p className="text-gray-500 mb-6">Add more information about your event</p>
-                        <div className="p-8 border-2 border-dashed border-gray-300 rounded-lg">
-                          <PlusCircleIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                          <p className="text-sm text-gray-600 mb-4">You'll be able to add additional details after creating the basic event</p>
-                          <button
-                            type="button"
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500"
-                            onClick={() => setActiveTab('basic')}
-                          >
-                            Return to Basic Information
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  
                   {/* Form Actions */}
                   <div className="mt-8 pt-5 border-t border-gray-200">
                     <div className="flex justify-end">
@@ -382,16 +362,16 @@ const CreateEventPage = () => {
               </div>
             </div>
             
-            {/* Event Preview Section */}
-            <div className="lg:col-span-1">
+            {/* Event Preview Section - SCALED LARGER */}
+            <div className="lg:col-span-2">
               <div className="sticky top-8">
                 <div className="bg-white rounded-xl shadow-md p-6 overflow-hidden">
                   <div className="flex items-center mb-4">
-                    <EyeIcon className="h-5 w-5 text-sky-500 mr-2" />
-                    <h3 className="text-lg font-medium text-gray-900">Event Preview</h3>
+                    <EyeIcon className="h-6 w-6 text-sky-500 mr-2" />
+                    <h3 className="text-xl font-medium text-gray-900">Event Preview</h3>
                   </div>
                   
-                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-200 hover:shadow-md hover:border-sky-100">
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-200 hover:shadow-md hover:border-sky-100 transform hover:scale-[1.02]">
                     <div className="aspect-[4/3] bg-gradient-to-br from-sky-50 to-blue-50 relative">
                       {previewUrl ? (
                         <img 
@@ -401,24 +381,27 @@ const CreateEventPage = () => {
                         />
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-400 transition-colors">
-                          Event Poster
+                          <div className="text-center">
+                            <PhotoIcon className="h-12 w-12 mx-auto mb-2" />
+                            <p>Event Poster</p>
+                          </div>
                         </div>
                       )}
                     </div>
-                    <div className="p-4">
-                      <h3 className="font-medium text-gray-900 transition-colors">
+                    <div className="p-5">
+                      <h3 className="text-lg font-medium text-gray-900 transition-colors">
                         {eventName || 'Event Name'}
                       </h3>
-                      <p className="text-sm text-gray-500 mt-1">
+                      <p className="text-sm text-gray-500 mt-2">
                         {formattedDate || 'Event Date'} {time ? `at ${time}` : ''}
                       </p>
-                      <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                      <p className="text-sm text-gray-500 mt-2 line-clamp-3">
                         {description || 'Event description will appear here...'}
                       </p>
                     </div>
                   </div>
                   
-                  <div className="mt-4 text-xs text-gray-500">
+                  <div className="mt-4 text-sm text-gray-500">
                     <p>This is how your event will appear to users browsing events.</p>
                   </div>
                 </div>

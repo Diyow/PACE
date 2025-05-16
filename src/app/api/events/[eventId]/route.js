@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 
 // READ - Get a single event by ID
 export async function GET(request, { params }) {
@@ -51,7 +52,7 @@ export async function PUT(request, { params }) {
     }
     
     // Get the current user session to verify ownership
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -150,7 +151,7 @@ export async function DELETE(request, { params }) {
     }
     
     // Get the current user session to verify ownership
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },

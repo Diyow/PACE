@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
 import { ObjectId } from 'mongodb';
+import { authOptions } from '@/lib/auth';
 
 // CREATE - Create a new event
 export async function POST(request) {
@@ -24,7 +25,7 @@ export async function POST(request) {
     }
     
     // Get the current user session to identify the organizer
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },

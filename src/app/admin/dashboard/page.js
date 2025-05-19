@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import RoleGuard from '@/components/RoleGuard'
 import { 
   UserCircleIcon, 
@@ -18,18 +18,18 @@ import OrganizersList from '@/components/dashboard/OrganizersList'
 import RecentActivity from '@/components/dashboard/RecentActivity'
 
 export default function AdminDashboard() {
-  const stats = [
+  const [stats, setStats] = useState([
     {
       title: 'Total Organizers',
-      value: '12',
+      value: '0',
       icon: BuildingOfficeIcon,
-      trendValue: '+2 this month'
+      trendValue: '+0 this month'
     },
     {
       title: 'Active Events',
-      value: '24',
+      value: '0',
       icon: CalendarIcon,
-      trendValue: '+5 this week'
+      trendValue: '+0 this week'
     },
     {
       title: 'Total Tickets',
@@ -43,7 +43,58 @@ export default function AdminDashboard() {
       icon: UserCircleIcon,
       trendValue: '+45 this week'
     }
-  ]
+  ])
+  
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        // Fetch organizers count
+        const organizersResponse = await fetch('/api/organizers')
+        if (!organizersResponse.ok) {
+          throw new Error('Failed to fetch organizers')
+        }
+        const organizersData = await organizersResponse.json()
+        const organizersCount = organizersData.length
+        
+        // Fetch active events count
+        const eventsResponse = await fetch('/api/events?status=upcoming')
+        if (!eventsResponse.ok) {
+          throw new Error('Failed to fetch events')
+        }
+        const eventsData = await eventsResponse.json()
+        const activeEventsCount = eventsData.length
+        
+        // Update stats with real data
+        setStats(prevStats => {
+          const newStats = [...prevStats]
+          
+          // Update organizers count
+          newStats[0] = {
+            ...newStats[0],
+            value: organizersCount.toString(),
+            trendValue: `+${Math.floor(organizersCount * 0.2)} this month` // Example trend calculation
+          }
+          
+          // Update active events count
+          newStats[1] = {
+            ...newStats[1],
+            value: activeEventsCount.toString(),
+            trendValue: `+${Math.floor(activeEventsCount * 0.3)} this week` // Example trend calculation
+          }
+          
+          return newStats
+        })
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchDashboardData()
+  }, [])
 
   return (
     <RoleGuard allowedRoles={['admin']}>

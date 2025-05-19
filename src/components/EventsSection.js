@@ -1,20 +1,44 @@
 // components/EventsSection.js
 'use client'
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import EventCard from './EventCard';
 import { MagnifyingGlassIcon, FunnelIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 function EventsSection() {
  const [searchQuery, setSearchQuery] = useState('');
+ const [events, setEvents] = useState([]);
+ const [loading, setLoading] = useState(true);
+ const [error, setError] = useState(null);
  
- // Replace with your actual event data
- const events = [
-  { id: 1, name: 'Event Name', date: '01 Jan, 2025', description: 'Description..' },
-  { id: 2, name: 'Event Name', date: '01 Jan, 2025', description: 'Description..' },
-  { id: 3, name: 'Event Name', date: '01 Jan, 2025', description: 'Description..' },
-  { id: 4, name: 'Event Name', date: '01 Jan, 2025', description: 'Description..' },
-  { id: 5, name: 'Event Name', date: '01 Jan, 2025', description: 'Description..' }
- ];
+ // Fetch events from the API
+ useEffect(() => {
+  const fetchEvents = async () => {
+   try {
+    setLoading(true);
+    const response = await fetch('/api/events');
+    
+    if (!response.ok) {
+     throw new Error('Failed to fetch events');
+    }
+    
+    const data = await response.json();
+    setEvents(data);
+   } catch (err) {
+    console.error('Error fetching events:', err);
+    setError('Failed to load events. Please try again later.');
+   } finally {
+    setLoading(false);
+   }
+  };
+  
+  fetchEvents();
+ }, []);
+
+ // Filter events based on search query
+ const filteredEvents = events.filter(event => 
+  event.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+  (event.description && event.description.toLowerCase().includes(searchQuery.toLowerCase()))
+ );
 
  const handleSearch = (e) => {
   setSearchQuery(e.target.value);
@@ -54,11 +78,38 @@ function EventsSection() {
      </button>
     </div>
 
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-     {events.map(event => (
-      <EventCard key={event.id} event={event} />
-     ))}
-    </div>
+    {loading ? (
+     <div className="flex justify-center items-center py-12">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500"></div>
+     </div>
+    ) : error ? (
+     <div className="text-center py-12 text-red-500">{error}</div>
+    ) : filteredEvents.length === 0 ? (
+     <div className="text-center py-12 text-gray-500">
+      {searchQuery ? 'No events match your search' : 'No events available'}
+     </div>
+    ) : (
+     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {filteredEvents.map(event => (
+       <EventCard key={event._id} event={{
+        id: event._id,
+        name: event.name,
+        date: (() => {
+          const eventDate = new Date(event.date + 'T' + (event.time || '00:00'));
+          const formattedDate = eventDate.toLocaleString('en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+          });
+          const hours = eventDate.getHours().toString().padStart(2, '0');
+          const minutes = eventDate.getMinutes().toString().padStart(2, '0');
+          return `${formattedDate} at ${hours}.${minutes}`;
+        })(),
+        description: event.description || 'No description available'
+       }} />
+      ))}
+     </div>
+    )}
    </div>
   </section>
  );

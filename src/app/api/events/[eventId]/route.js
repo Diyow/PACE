@@ -92,6 +92,10 @@ export async function PUT(request, { params }) {
     const description = formData.get('description');
     const status = formData.get('status');
     
+    // Extract seating layout and ticket categories if provided
+    const seatingLayout = formData.get('seatingLayout') ? JSON.parse(formData.get('seatingLayout')) : existingEvent.seatingLayout || [];
+    const ticketCategories = formData.get('ticketCategories') ? JSON.parse(formData.get('ticketCategories')) : existingEvent.ticketCategories || [];
+    
     // Validate required fields
     if (!eventName || !date || !time) {
       return NextResponse.json(
@@ -118,6 +122,9 @@ export async function PUT(request, { params }) {
       posterUrl: posterUrl,
       status: status || existingEvent.status,
       updatedAt: new Date(),
+      // Add seating layout and ticket categories
+      seatingLayout: seatingLayout,
+      ticketCategories: ticketCategories,
     };
     
     // Update the event in the database

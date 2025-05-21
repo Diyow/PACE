@@ -56,6 +56,9 @@ export async function POST(request) {
       status: 'upcoming',
       createdAt: new Date(),
       updatedAt: new Date(),
+      // Add seating layout and ticket categories
+      seatingLayout: formData.get('seatingLayout') ? JSON.parse(formData.get('seatingLayout')) : [],
+      ticketCategories: formData.get('ticketCategories') ? JSON.parse(formData.get('ticketCategories')) : [],
     };
     
     // Insert the event into the database

@@ -6,6 +6,9 @@ import SeatingLayoutEditor from '@/components/SeatingLayoutEditor';
 import SectionConfigPanel from '@/components/SectionConfigPanel';
 import { defaultTheaterLayout } from './seatingModel';
 
+// Add this import
+import { useRouter, useSearchParams } from 'next/navigation';
+
 const TicketSetupPage = () => {
   const [ticketCategories, setTicketCategories] = useState([
     { category: 'VIP', price: '100$', seat: 'A15-A33' },
@@ -48,16 +51,84 @@ const TicketSetupPage = () => {
     setTicketCategories(updatedCategories);
   };
 
-  const handleSave = () => {
+  // In the component
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const eventId = searchParams.get('eventId');
+  
+  // Add this useEffect to fetch existing data if editing an existing event
+  useEffect(() => {
+    const fetchEventData = async () => {
+      if (!eventId) return;
+      
+      try {
+        const response = await fetch(`/api/events/${eventId}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch event data');
+        }
+        
+        const eventData = await response.json();
+        
+        // Set seating layout and ticket categories if available
+        if (eventData.seatingLayout && eventData.seatingLayout.length > 0) {
+          setSeatingLayout(eventData.seatingLayout);
+        }
+        
+        if (eventData.ticketCategories && eventData.ticketCategories.length > 0) {
+          setTicketCategories(eventData.ticketCategories);
+        }
+      } catch (error) {
+        console.error('Error fetching event data:', error);
+        alert('Failed to load event data. Please try again.');
+      }
+    };
+    
+    fetchEventData();
+  }, [eventId]);
+
+  // Update the handleSave function
+  const handleSave = async () => {
     // Create the data structure to save
     const venueConfig = {
       ticketCategories,
       seatingLayout
     };
     
-    console.log('Saving venue configuration:', venueConfig);
-    alert('Venue configuration saved!');
-    // Implement save logic here
+    try {
+      let url = '/api/events';
+      let method = 'POST';
+      
+      // If editing an existing event, use the update endpoint
+      if (eventId) {
+        url = `/api/events/${eventId}/tickets`;
+        method = 'PUT';
+      }
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(venueConfig),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to save venue configuration');
+      }
+      
+      alert('Venue configuration saved successfully!');
+      
+      // Redirect to the appropriate page
+      if (eventId) {
+        router.push(`/organizer/edit-event/${eventId}`);
+      } else {
+        router.push('/organizer/create-event');
+      }
+    } catch (error) {
+      console.error('Error saving venue configuration:', error);
+      alert('Failed to save venue configuration. Please try again.');
+    }
   };
 
   const handleCancel = () => {

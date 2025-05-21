@@ -157,18 +157,31 @@ const SeatSelectionPage = () => {
 
   return (
     <div className="font-sans max-w-7xl mx-auto p-4 bg-gray-100 rounded-md">
-      <div className="flex gap-4 mb-4">
+      {/* Legend with improved responsive design */}
+      <div className="flex flex-wrap gap-4 mb-4">
         <span className="bg-gray-300 text-gray-800 px-3 py-1 rounded-md text-sm">Available</span>
         <span className="bg-gray-700 text-white px-3 py-1 rounded-md text-sm">Not Available</span>
         <span className="bg-blue-500 text-white px-3 py-1 rounded-md text-sm">Selected</span>
       </div>
 
-      {/* Scrollable Container */}
-      <div ref={scrollContainerRef} className="overflow-auto max-h-[500px] min-w-[1200px]">
+      {/* Responsive container */}
+      <div ref={scrollContainerRef} className="overflow-auto max-h-[70vh] w-full md:min-w-[800px] lg:min-w-[1000px]">
         <div className="flex flex-col justify-center px-4">
           <div className="w-full flex justify-center mb-6">
-            <div className="bg-gray-200 text-gray-700 py-2 px-4 rounded-md font-bold text-center">
+            <div className="bg-gray-200 text-gray-700 py-2 px-4 rounded-md font-bold text-center w-full md:w-1/2 lg:w-1/3">
               STAGE
+            </div>
+          </div>
+
+          {/* Add a mini-map for orientation */}
+          <div className="hidden md:block absolute top-4 right-4 bg-white p-2 rounded-md shadow-md">
+            <h4 className="text-xs font-bold mb-1">Venue Overview</h4>
+            <div className="w-[100px] h-[80px] bg-gray-100 relative">
+              <div className="absolute top-0 w-full h-[10px] bg-gray-300 flex justify-center items-center text-[8px]">STAGE</div>
+              <div className="absolute top-[15px] left-[5px] w-[25px] h-[25px] bg-blue-100 transform rotate-10 text-[6px] flex items-center justify-center">Left</div>
+              <div className="absolute top-[15px] left-[35px] w-[30px] h-[25px] bg-blue-100 text-[6px] flex items-center justify-center">Center</div>
+              <div className="absolute top-[15px] right-[5px] w-[25px] h-[25px] bg-blue-100 transform -rotate-10 text-[6px] flex items-center justify-center">Right</div>
+              <div className="absolute bottom-[5px] left-[20px] right-[20px] h-[15px] bg-blue-100 text-[6px] flex items-center justify-center">Balcony</div>
             </div>
           </div>
           <div className="flex items-start gap-8 mb-8">
@@ -226,7 +239,7 @@ const SeatSelectionPage = () => {
                   {seats.map(seat => (
                     <button
                       key={`${rowLetter}-${seat.number}`}
-                      className={`text-xs min-w-[2rem] h-[2rem] text-center py-0.5 rounded-md border border-gray-400
+                      className={`text-xs sm:min-w-[1.5rem] md:min-w-[2rem] min-w-[1.25rem] h-[1.5rem] sm:h-[1.75rem] md:h-[2rem] text-center py-0.5 rounded-md border border-gray-400
                             ${seat.status === 'available'
                               ? 'bg-gray-300 text-gray-800 hover:bg-gray-400 cursor-pointer'
                               : seat.status === 'unavailable'
@@ -245,20 +258,34 @@ const SeatSelectionPage = () => {
         </div>
       </div>
 
-      <div className="mt-8 bg-white p-4 rounded-md border border-gray-200 w-full flex flex-col items-end">
-        <div className="flex justify-between w-full mb-2 text-lg font-semibold">
-          <span>Total Price</span>
-          <span>${totalPrice.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between w-full mb-4 text-sm">
-          <span>Seat</span>
-          <span>{selectedSeats.map(seat => `${seat.row}${seat.seat}`).join(', ')}</span>
+      <div className="mt-8 bg-white p-4 rounded-md border border-gray-200 w-full flex flex-col">
+        <h3 className="text-lg font-bold mb-4">Your Selection</h3>
+        <div className="flex flex-col md:flex-row justify-between w-full mb-4">
+          <div className="mb-2 md:mb-0">
+            <span className="font-semibold block">Selected Seats:</span>
+            {selectedSeats.length > 0 ? (
+              <div className="flex flex-wrap gap-2 mt-1">
+                {selectedSeats.map((seat, idx) => (
+                  <span key={idx} className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-sm">
+                    {seat.section.charAt(0)}-{seat.row}{seat.seat}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="text-gray-500 italic">No seats selected</span>
+            )}
+          </div>
+          <div className="text-right">
+            <span className="font-semibold block">Total Price:</span>
+            <span className="text-xl font-bold text-green-600">${totalPrice.toFixed(2)}</span>
+          </div>
         </div>
         <button
-          className="bg-green-500 text-white py-3 rounded-md cursor-pointer text-base font-bold self-center w-1/2 hover:bg-green-700"
+          className={`py-3 rounded-md cursor-pointer text-base font-bold self-center w-full md:w-1/2 ${selectedSeats.length > 0 ? 'bg-green-500 text-white hover:bg-green-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
           onClick={handleOrder}
+          disabled={selectedSeats.length === 0}
         >
-          Order ({selectedSeats.length})
+          {selectedSeats.length > 0 ? `Order (${selectedSeats.length})` : 'Select seats to continue'}
         </button>
       </div>
     </div>

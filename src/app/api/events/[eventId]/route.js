@@ -7,7 +7,8 @@ import { authOptions } from '@/lib/auth';
 // READ - Get a single event by ID
 export async function GET(request, { params }) {
   try {
-    const eventId = params.eventId;
+    // Await params before accessing its properties
+    const { eventId } = await params;
     
     if (!eventId || !ObjectId.isValid(eventId)) {
       return NextResponse.json(

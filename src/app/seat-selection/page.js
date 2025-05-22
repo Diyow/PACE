@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Image from 'next/image'; // Import the Image component
 
 const SeatSelectionPage = () => {
   const router = useRouter();
@@ -183,6 +184,17 @@ const SeatSelectionPage = () => {
       <div className="mb-6 text-center">
         <h1 className="text-3xl font-bold text-sky-800">{eventName}</h1> {/* Larger title */}
         <p className="text-sky-600 text-lg">Select your seats</p> {/* Larger subtitle */}
+      </div>
+
+      {/* Add the seat mapping image here */}
+      <div className="mb-6 flex justify-center">
+        <Image 
+          src="/seat-mapping.png" 
+          alt="Seat Mapping Reference" 
+          width={800} // Adjust width as needed
+          height={400} // Adjust height as needed
+          className="rounded-lg shadow-md"
+        />
       </div>
 
       <div className="flex flex-col sm:flex-row flex-wrap justify-between items-center mb-6 bg-white p-4 rounded-lg shadow-md"> {/* Controls shadow & padding */}

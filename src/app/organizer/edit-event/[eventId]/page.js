@@ -58,15 +58,6 @@ const EditEventPage = () => {
         setTime(eventData.time || '');
         setDescription(eventData.description || '');
         
-        // Set seating layout and ticket categories if available
-        if (eventData.seatingLayout && eventData.seatingLayout.length > 0) {
-          setSeatingLayout(eventData.seatingLayout);
-        }
-        
-        if (eventData.ticketCategories && eventData.ticketCategories.length > 0) {
-          setTicketCategories(eventData.ticketCategories);
-        }
-        
         // Set poster preview if available
         if (eventData.posterUrl) {
           setPreviewUrl(eventData.posterUrl);

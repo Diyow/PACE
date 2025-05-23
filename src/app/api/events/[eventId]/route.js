@@ -5,9 +5,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
 // READ - Get a single event by ID
-export async function GET(request, { params }) {
+export async function GET(request, context) { // Changed to context
   try {
-    const eventId = params.eventId;
+    const paramsObject = await context.params; // Await context.params
+    const eventId = paramsObject.eventId;
     
     if (!eventId || !ObjectId.isValid(eventId)) {
       return NextResponse.json(
@@ -40,9 +41,10 @@ export async function GET(request, { params }) {
 }
 
 // UPDATE - Update an event by ID
-export async function PUT(request, { params }) {
+export async function PUT(request, context) { // Changed to context
   try {
-    const eventId = params.eventId;
+    const paramsObject = await context.params; // Await context.params (This is line 46 now contextually)
+    const eventId = paramsObject.eventId;
     
     if (!eventId || !ObjectId.isValid(eventId)) {
       return NextResponse.json(
@@ -51,7 +53,6 @@ export async function PUT(request, { params }) {
       );
     }
     
-    // Get the current user session to verify ownership
     const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json(
@@ -62,7 +63,6 @@ export async function PUT(request, { params }) {
     
     const { db } = await connectToDatabase();
     
-    // Check if the event exists and belongs to the current user
     const existingEvent = await db.collection('events').findOne({
       _id: new ObjectId(eventId)
     });
@@ -74,25 +74,31 @@ export async function PUT(request, { params }) {
       );
     }
     
-    // Check if the user is the organizer of the event
-    if (existingEvent.organizerId !== session.user.id) {
+    const organizerIdAsString = typeof existingEvent.organizerId === 'string'
+        ? existingEvent.organizerId
+        : existingEvent.organizerId.toString();
+
+    if (session.user.role !== 'admin' && organizerIdAsString !== session.user.id) {
       return NextResponse.json(
         { error: 'You do not have permission to update this event' },
         { status: 403 }
       );
     }
     
-    // Parse the form data from the request
     const formData = await request.formData();
     
-    // Extract updated event details
     const eventName = formData.get('eventName');
     const date = formData.get('date');
     const time = formData.get('time');
     const description = formData.get('description');
     const status = formData.get('status');
     
-    // Validate required fields
+    const seatingLayoutString = formData.get('seatingLayout');
+    const ticketCategoriesString = formData.get('ticketCategories');
+
+    const seatingLayout = seatingLayoutString ? JSON.parse(seatingLayoutString) : existingEvent.seatingLayout || [];
+    const ticketCategories = ticketCategoriesString ? JSON.parse(ticketCategoriesString) : existingEvent.ticketCategories || [];
+    
     if (!eventName || !date || !time) {
       return NextResponse.json(
         { error: 'Event name, date, and time are required' },
@@ -100,16 +106,14 @@ export async function PUT(request, { params }) {
       );
     }
     
-    // Handle poster file if provided
     let posterUrl = existingEvent.posterUrl;
-    const poster = formData.get('poster');
-    if (poster && poster.size > 0) {
-      // In a real implementation, you would upload the file to a storage service
-      // and store the URL. For this example, we'll just update the placeholder.
-      posterUrl = '/images/event-posters/' + Date.now() + '-' + poster.name;
+    const posterFile = formData.get('poster'); // Use a different variable name for the file
+    if (posterFile && posterFile.size > 0) {
+      // Ensure posterFile.name is defined if you use it
+      const fileName = typeof posterFile.name === 'string' ? posterFile.name : 'event-poster';
+      posterUrl = '/images/event-posters/' + Date.now() + '-' + fileName;
     }
     
-    // Create the updated event object
     const updatedEvent = {
       name: eventName,
       date: date,
@@ -118,9 +122,10 @@ export async function PUT(request, { params }) {
       posterUrl: posterUrl,
       status: status || existingEvent.status,
       updatedAt: new Date(),
+      seatingLayout: seatingLayout,
+      ticketCategories: ticketCategories,
     };
     
-    // Update the event in the database
     await db.collection('events').updateOne(
       { _id: new ObjectId(eventId) },
       { $set: updatedEvent }
@@ -132,16 +137,17 @@ export async function PUT(request, { params }) {
   } catch (error) {
     console.error('Error updating event:', error);
     return NextResponse.json(
-      { error: 'Failed to update event' },
+      { error: 'Failed to update event: ' + error.message },
       { status: 500 }
     );
   }
 }
 
 // DELETE - Delete an event by ID
-export async function DELETE(request, { params }) {
+export async function DELETE(request, context) { // Changed to context
   try {
-    const eventId = params.eventId;
+    const paramsObject = await context.params; // Await context.params
+    const eventId = paramsObject.eventId;
     
     if (!eventId || !ObjectId.isValid(eventId)) {
       return NextResponse.json(
@@ -150,7 +156,6 @@ export async function DELETE(request, { params }) {
       );
     }
     
-    // Get the current user session to verify ownership
     const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json(
@@ -161,7 +166,6 @@ export async function DELETE(request, { params }) {
     
     const { db } = await connectToDatabase();
     
-    // Check if the event exists and belongs to the current user
     const existingEvent = await db.collection('events').findOne({
       _id: new ObjectId(eventId)
     });
@@ -173,15 +177,17 @@ export async function DELETE(request, { params }) {
       );
     }
     
-    // Check if the user is the organizer of the event
-    if (existingEvent.organizerId !== session.user.id) {
+    const organizerIdAsString = typeof existingEvent.organizerId === 'string'
+        ? existingEvent.organizerId
+        : existingEvent.organizerId.toString();
+
+    if (session.user.role !== 'admin' && organizerIdAsString !== session.user.id) {
       return NextResponse.json(
         { error: 'You do not have permission to delete this event' },
         { status: 403 }
       );
     }
     
-    // Delete the event from the database
     await db.collection('events').deleteOne({
       _id: new ObjectId(eventId)
     });
@@ -192,7 +198,7 @@ export async function DELETE(request, { params }) {
   } catch (error) {
     console.error('Error deleting event:', error);
     return NextResponse.json(
-      { error: 'Failed to delete event' },
+      { error: 'Failed to delete event: ' + error.message },
       { status: 500 }
     );
   }

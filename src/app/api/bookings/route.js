@@ -25,8 +25,9 @@ export async function POST(request) {
     }
     
     const { db } = await connectToDatabase();
+    const eventObjectId = new ObjectId(eventId); // Use a consistent ObjectId variable
     
-    const event = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
+    const event = await db.collection('events').findOne({ _id: eventObjectId });
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
@@ -35,29 +36,23 @@ export async function POST(request) {
     const ticketDetails = [];
 
     if (_detailedSelectedSeats && Array.isArray(_detailedSelectedSeats) && _detailedSelectedSeats.length > 0) {
-        console.log("Processing _detailedSelectedSeats:", JSON.stringify(_detailedSelectedSeats, null, 2));
         for (const seat of _detailedSelectedSeats) {
             const seatPrice = parseFloat(seat.price);
             if (isNaN(seatPrice)) {
                  return NextResponse.json({ error: `Invalid price for seat in category ${seat.category}` }, { status: 400 });
             }
-
             let derivedTicketTypeId = seat.ticketTypeId ? new ObjectId(seat.ticketTypeId) : null;
-
             if (!derivedTicketTypeId && seat.category) {
-                const tt = await db.collection('ticketTypes').findOne({ eventId: new ObjectId(eventId), category: seat.category });
+                const tt = await db.collection('ticketTypes').findOne({ eventId: eventObjectId, category: seat.category });
                 if (tt) {
                     derivedTicketTypeId = tt._id;
-                } else {
-                    console.warn(`TicketType for category '${seat.category}' not found for event ${eventId}. Price from seat selection will be used for booking detail. TicketTypeId will be null.`);
                 }
             }
-            
-            totalAmount += seatPrice; // Use price from selected seat as authoritative for this loop
+            totalAmount += seatPrice;
             ticketDetails.push({
                 ticketTypeId: derivedTicketTypeId,
-                category: seat.category, // Category from selected seat
-                price: seatPrice,        // Price from selected seat
+                category: seat.category,
+                price: seatPrice,
                 quantity: 1,
                 seatInfo: seat.seatInfo || `${seat.section}-${seat.row}${seat.seat}`
             });
@@ -68,10 +63,8 @@ export async function POST(request) {
             const quantity = parseInt(quantities[i]);
             if (quantity <= 0) return NextResponse.json({ error: 'Quantity must be greater than 0' }, { status: 400 });
             if (!ObjectId.isValid(ticketTypeIdStr)) return NextResponse.json({ error: `Invalid TicketType ID format: ${ticketTypeIdStr}` }, { status: 400 });
-            
-            const ticketType = await db.collection('ticketTypes').findOne({ _id: new ObjectId(ticketTypeIdStr), eventId: new ObjectId(eventId) });
+            const ticketType = await db.collection('ticketTypes').findOne({ _id: new ObjectId(ticketTypeIdStr), eventId: eventObjectId });
             if (!ticketType) return NextResponse.json({ error: `Ticket type with ID ${ticketTypeIdStr} not found` }, { status: 404 });
-            
             totalAmount += parseFloat(ticketType.price) * quantity;
             ticketDetails.push({
                 ticketTypeId: new ObjectId(ticketTypeIdStr),
@@ -85,7 +78,7 @@ export async function POST(request) {
     }
 
     const booking = {
-      eventId: new ObjectId(eventId),
+      eventId: eventObjectId,
       attendeeId: new ObjectId(session.user.id), 
       ticketDetails: ticketDetails, 
       totalAmount: totalAmount, 
@@ -103,8 +96,8 @@ export async function POST(request) {
       for (let i = 0; i < detail.quantity; i++) {
         tickets.push({
           bookingId: bookingId,
-          eventId: new ObjectId(eventId),
-          ticketTypeId: detail.ticketTypeId, // Already an ObjectId or null from above
+          eventId: eventObjectId,
+          ticketTypeId: detail.ticketTypeId,
           attendeeId: new ObjectId(session.user.id),
           status: (booking.paymentStatus === 'completed') ? 'Confirmed' : 'Reserved', 
           seatInfo: detail.seatInfo || null, 
@@ -119,102 +112,89 @@ export async function POST(request) {
       ticketInsertResult = await db.collection('tickets').insertMany(tickets);
     }
 
-    // *** REVISED LOGIC: Update seat statuses if booking is completed ***
     if (booking.paymentStatus === 'completed' && _detailedSelectedSeats && Array.isArray(_detailedSelectedSeats) && _detailedSelectedSeats.length > 0) {
-      console.log("Attempting to update seat statuses for completed booking...");
       for (const seat of _detailedSelectedSeats) {
-        // seat object from _detailedSelectedSeats should have: section, row, seat (number/identifier)
-        console.log("Processing seat for status update:", JSON.stringify(seat));
         if (seat.section && seat.row && seat.seat !== undefined) {
           const queryCriteria = {
-            eventId: new ObjectId(eventId),
+            eventId: eventObjectId,
             section: seat.section,
             row: seat.row, 
-            seatNumber: String(seat.seat) // Convert seat number from frontend to string for matching
+            seatNumber: String(seat.seat)
           };
-          console.log("Using query criteria for seat update:", JSON.stringify(queryCriteria));
-          
           try {
-            const updateResult = await db.collection('seats').updateOne(
-              queryCriteria,
-              { $set: { status: 'occupied', updatedAt: new Date() } }
-            );
-
-            if (updateResult.matchedCount === 0) {
-              console.warn(`Seat not found for update with current criteria. Event: ${eventId}, Section: ${seat.section}, Row: ${seat.row}, SeatNumber: ${String(seat.seat)}. Double-check 'seats' collection documents and query fields.`);
-            } else if (updateResult.modifiedCount > 0) {
-              console.log(`Seat status updated successfully: Event ${eventId}, Section ${seat.section}, Row ${seat.row}, SeatNumber ${String(seat.seat)}`);
-            } else {
-              console.warn(`Seat found but not modified (already occupied or no change needed?): Event ${eventId}, Section ${seat.section}, Row ${seat.row}, SeatNumber ${String(seat.seat)}`);
-            }
+            const updateResult = await db.collection('seats').updateOne(queryCriteria, { $set: { status: 'occupied', updatedAt: new Date() } });
+            // Logging for seat update result can be added here if needed
           } catch (updateError) {
             console.error(`Error during seat update for Event ${eventId}, Seat ${seat.section}-${seat.row}${seat.seat}:`, updateError);
           }
-
-        } else {
-          console.warn("Skipping seat status update due to missing section, row, or seat identifier in _detailedSelectedSeats item:", JSON.stringify(seat));
         }
       }
     }
-    // *** END OF REVISED LOGIC ***
     
+    // *** Remove user from waitlist upon successful purchase ***
+    if (booking.paymentStatus === 'completed' && session?.user?.id) {
+      try {
+        const waitlistRemovalResult = await db.collection('waitlist').deleteOne({
+          eventId: eventObjectId, 
+          attendeeId: new ObjectId(session.user.id) 
+        });
+        if (waitlistRemovalResult.deletedCount > 0) {
+          console.log(`User ${session.user.id} removed from waitlist for event ${eventId} after successful booking.`);
+          // Optionally, update the waitlist entry status to 'converted' instead of deleting,
+          // await db.collection('waitlist').updateOne(
+          //   { eventId: eventObjectId, attendeeId: new ObjectId(session.user.id) },
+          //   { $set: { status: 'converted', updatedAt: new Date() } }
+          // );
+        }
+      } catch (waitlistError) {
+        console.error(`Error removing user from waitlist after booking for event ${eventId}:`, waitlistError);
+      }
+    }
+    // *** END OF WAITLIST REMOVAL LOGIC ***
+
     if (bookingId && tickets.length > 0 && booking.paymentStatus === 'completed') {
+      // ... (existing email sending logic) ...
       let attendeeEmail = session.user.email;
       let attendeeName = session.user.name || 'Valued Customer';
-
-      if (!attendeeEmail || (session.user.name && !attendeeName)) { // Check if name is also missing if session.user.name exists
+      if (!attendeeEmail || (session.user.name && !attendeeName)) {
         const attendeeUser = await db.collection('users').findOne({ _id: new ObjectId(session.user.id) });
         attendeeEmail = attendeeEmail || attendeeUser?.email;
         attendeeName = attendeeName || attendeeUser?.fullName || 'Valued Customer';
       }
-
       if (attendeeEmail) {
-        const eventDetailsForEmail = await db.collection('events').findOne({ _id: new ObjectId(eventId) }, { projection: { name: 1, date: 1, time: 1 } });
+        const eventDetailsForEmail = await db.collection('events').findOne({ _id: eventObjectId }, { projection: { name: 1, date: 1, time: 1 } });
         const emailData = {
             bookingId: bookingId.toString(),
             eventName: eventDetailsForEmail.name,
             eventDate: new Date(`${eventDetailsForEmail.date}T${eventDetailsForEmail.time || '00:00:00'}`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
             tickets: ticketDetails.map(td => ({
-                category: td.category,
-                quantity: td.quantity,
-                price: td.price,
-                seatInfo: td.seatInfo
+                category: td.category, quantity: td.quantity, price: td.price, seatInfo: td.seatInfo
             })),
-            totalAmount: totalAmount,
-            attendeeName: attendeeName,
+            totalAmount: totalAmount, attendeeName: attendeeName,
         };
         try {
             const { subject, html } = getBookingConfirmationEmail(emailData);
             await sendEmail({ to: attendeeEmail, subject, html });
-            console.log("Booking confirmation email sent to:", attendeeEmail);
         } catch (emailError) {
             console.error('Failed to send booking confirmation email:', emailError);
         }
-      } else {
-        console.warn("Attendee email not found, cannot send booking confirmation email for booking ID:", bookingId);
       }
     }
     
     return NextResponse.json({
       message: 'Booking created successfully',
-      bookingId: bookingId,
+      bookingId: bookingId.toString(),
       totalAmount: totalAmount,
       ticketsCreated: ticketInsertResult ? ticketInsertResult.insertedCount : 0
     }, { status: 201 });
 
   } catch (error) {
     console.error('Error creating booking:', error);
-    if (error instanceof SyntaxError && error.message.includes("JSON")) {
-        return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
-    }
-    return NextResponse.json(
-      { error: 'Failed to create booking', details: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create booking', details: error.message }, { status: 500 });
   }
 }
 
-// GET function (no changes from previous version, ensure it stringifies ObjectIds for client)
+// GET function (ensure it stringifies ObjectIds for client)
 export async function GET(request) {
   try {
     const session = await getServerSession(authOptions);
@@ -249,9 +229,9 @@ export async function GET(request) {
         }
         delete query.attendeeId; 
       } else if (session.user.role === 'admin') {
-        delete query.attendeeId; // Admin sees all users' bookings if not filtering by attendee
+        delete query.attendeeId; 
         if (eventId) {
-            // query.eventId is already set if admin filters by event
+            // query.eventId is already set
         }
       }
     }

@@ -40,10 +40,9 @@ export default function Footer() {
             <h3 className="text-gray-900 dark:text-white text-xl font-semibold">Quick Links</h3>
             <ul className="space-y-3">
               {[
-                { name: 'Events', href: '/events' },
-                { name: 'My Tickets', href: '/tickets' },
-                { name: 'Waitlist', href: '/waitlist' },
-                { name: 'Help Center', href: '/help' }
+                { name: 'Events', href: '/#events' },
+                { name: 'My Tickets', href: '/#my-tickets' },
+                { name: 'Waitlist', href: '/#waitlist' },
               ].map((link) => (
                 <li key={link.name}>
                   <a 

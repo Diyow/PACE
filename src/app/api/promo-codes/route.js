@@ -1,3 +1,4 @@
+// src/app/api/promo-codes/route.js
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
@@ -10,15 +11,16 @@ export async function POST(request) {
     const data = await request.json();
     const { eventId, code, discountType, discountValue, maxUses, expiryDate } = data;
     
-    // Validate required fields
     if (!eventId || !code || !discountType || !discountValue) {
       return NextResponse.json(
         { error: 'Event ID, code, discount type, and discount value are required' },
         { status: 400 }
       );
     }
+    if (!ObjectId.isValid(eventId)) {
+        return NextResponse.json({ error: 'Invalid Event ID format for creation' }, { status: 400 });
+    }
     
-    // Validate discount type
     if (!['percentage', 'fixed'].includes(discountType)) {
       return NextResponse.json(
         { error: 'Discount type must be either "percentage" or "fixed"' },
@@ -26,54 +28,49 @@ export async function POST(request) {
       );
     }
     
-    // Validate discount value
-    if (discountType === 'percentage' && (discountValue <= 0 || discountValue > 100)) {
+    if (discountType === 'percentage' && (parseFloat(discountValue) <= 0 || parseFloat(discountValue) > 100)) {
       return NextResponse.json(
         { error: 'Percentage discount must be between 1 and 100' },
         { status: 400 }
       );
     }
-    
-    // Get the current user session
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user || !['organizer', 'admin'].includes(session.user.role)) {
+     if (discountType === 'fixed' && parseFloat(discountValue) <= 0) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    const { db } = await connectToDatabase();
-    
-    // Check if the event exists and belongs to the organizer
-    const event = await db.collection('events').findOne({
-      _id: new ObjectId(eventId),
-      ...(session.user.role === 'organizer' ? { organizerId: session.user.id } : {})
-    });
-    
-    if (!event) {
-      return NextResponse.json(
-        { error: 'Event not found or you do not have permission' },
-        { status: 404 }
-      );
-    }
-    
-    // Check if the code already exists for this event
-    const existingCode = await db.collection('promoCodes').findOne({
-      eventId: new ObjectId(eventId),
-      code: code.toUpperCase()
-    });
-    
-    if (existingCode) {
-      return NextResponse.json(
-        { error: 'This promotional code already exists for this event' },
+        { error: 'Fixed discount value must be greater than 0' },
         { status: 400 }
       );
     }
     
-    // Create the promotional code
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user || !session.user.id) {
+      return NextResponse.json({ error: 'Unauthorized: No active session' }, { status: 401 });
+    }
+    if (!['organizer', 'admin'].includes(session.user.role)) {
+      return NextResponse.json({ error: 'Forbidden: Insufficient role' }, { status: 403 });
+    }
+    
+    const { db } = await connectToDatabase();
+    const eventObjectId = new ObjectId(eventId);
+    
+    const event = await db.collection('events').findOne({ _id: eventObjectId });
+    if (!event) {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+
+    if (session.user.role === 'organizer' && event.organizerId.toString() !== session.user.id) {
+      return NextResponse.json({ error: 'Forbidden: You do not own this event' }, { status: 403 });
+    }
+    
+    const existingCode = await db.collection('promoCodes').findOne({
+      eventId: eventObjectId,
+      code: code.toUpperCase()
+    });
+    if (existingCode) {
+      return NextResponse.json({ error: 'This promotional code already exists for this event' }, { status: 400 });
+    }
+    
     const promoCode = {
-      eventId: new ObjectId(eventId),
+      eventId: eventObjectId,
       code: code.toUpperCase(),
       discountType,
       discountValue: parseFloat(discountValue),
@@ -88,14 +85,16 @@ export async function POST(request) {
     
     return NextResponse.json({
       message: 'Promotional code created successfully',
-      promoCodeId: result.insertedId
+      promoCode: {
+        ...promoCode,
+        _id: result.insertedId.toString(),
+        eventId: promoCode.eventId.toString(),
+      }
     }, { status: 201 });
+
   } catch (error) {
     console.error('Error creating promotional code:', error);
-    return NextResponse.json(
-      { error: 'Failed to create promotional code' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to create promotional code', details: error.message }, { status: 500 });
   }
 }
 
@@ -104,123 +103,111 @@ export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const eventId = searchParams.get('eventId');
-    const code = searchParams.get('code');
+    const codeToValidate = searchParams.get('code'); // Renamed for clarity
     
-    // Get the current user session
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    // Public validation of a specific code might not require a session,
+    // but listing codes for an event definitely does.
+    // For now, let's assume a session is needed for all GET operations here for simplicity,
+    // as the primary use case (edit page) requires it.
+    if (!session || !session.user || !session.user.id) {
+      return NextResponse.json({ error: 'Unauthorized: No active session' }, { status: 401 });
     }
     
     const { db } = await connectToDatabase();
     
-    // If code is provided, validate it
-    if (code && eventId) {
+    // Case 1: Validate a specific promotional code for an event
+    if (codeToValidate && eventId) {
+      if (!ObjectId.isValid(eventId)) {
+        return NextResponse.json({ error: 'Invalid Event ID format for validation' }, { status: 400 });
+      }
+      const eventObjectId = new ObjectId(eventId);
       const promoCode = await db.collection('promoCodes').findOne({
-        eventId: new ObjectId(eventId),
-        code: code.toUpperCase()
+        eventId: eventObjectId,
+        code: codeToValidate.toUpperCase()
       });
       
       if (!promoCode) {
-        return NextResponse.json(
-          { error: 'Invalid promotional code' },
-          { status: 404 }
-        );
+        return NextResponse.json({ valid: false, error: 'Invalid promotional code' }, { status: 404 });
       }
-      
-      // Check if the code has expired
       if (promoCode.expiryDate && new Date() > new Date(promoCode.expiryDate)) {
-        return NextResponse.json(
-          { error: 'This promotional code has expired' },
-          { status: 400 }
-        );
+        return NextResponse.json({ valid: false, error: 'This promotional code has expired' }, { status: 400 });
       }
-      
-      // Check if the code has reached its maximum uses
       if (promoCode.maxUses !== null && promoCode.currentUses >= promoCode.maxUses) {
-        return NextResponse.json(
-          { error: 'This promotional code has reached its maximum number of uses' },
-          { status: 400 }
-        );
+        return NextResponse.json({ valid: false, error: 'This promotional code has reached its maximum number of uses' }, { status: 400 });
       }
       
       return NextResponse.json({
         valid: true,
+        code: promoCode.code,
         discountType: promoCode.discountType,
-        discountValue: promoCode.discountValue
+        discountValue: promoCode.discountValue,
+        _id: promoCode._id.toString(),
+        eventId: promoCode.eventId.toString(),
       });
     }
     
-    // If eventId is provided, get all codes for that event (admin/organizer only)
-    if (eventId) {
+    // Case 2: Get all promotional codes for a specific event (for organizer/admin edit page)
+    if (eventId && !codeToValidate) { // Ensure codeToValidate is not present for this block
+      if (!ObjectId.isValid(eventId)) {
+         return NextResponse.json({ error: 'Invalid Event ID format for listing' }, { status: 400 });
+      }
       if (!['organizer', 'admin'].includes(session.user.role)) {
-        return NextResponse.json(
-          { error: 'Unauthorized' },
-          { status: 401 }
-        );
+        return NextResponse.json({ error: 'Forbidden: Insufficient role to view promo codes' }, { status: 403 });
       }
       
-      // For organizers, check if they own the event
+      const eventObjectId = new ObjectId(eventId);
       if (session.user.role === 'organizer') {
         const event = await db.collection('events').findOne({
-          _id: new ObjectId(eventId),
-          organizerId: session.user.id
+          _id: eventObjectId,
+          organizerId: new ObjectId(session.user.id) // Compare with ObjectId
         });
-        
         if (!event) {
-          return NextResponse.json(
-            { error: 'You do not have permission to view promotional codes for this event' },
-            { status: 403 }
-          );
+          return NextResponse.json({ error: 'Forbidden: You do not have permission to view promotional codes for this event' }, { status: 403 });
         }
       }
       
-      const promoCodes = await db.collection('promoCodes')
-        .find({ eventId: new ObjectId(eventId) })
+      const promoCodesForEvent = await db.collection('promoCodes')
+        .find({ eventId: eventObjectId })
         .sort({ createdAt: -1 })
         .toArray();
       
-      return NextResponse.json(promoCodes);
+      const sanitizedPromoCodes = promoCodesForEvent.map(pc => ({
+        ...pc,
+        _id: pc._id.toString(),
+        eventId: pc.eventId.toString(),
+        // expiryDate is a Date object from DB, frontend will format it
+      }));
+      return NextResponse.json(sanitizedPromoCodes);
     }
     
-    // If no parameters provided, return based on role
-    if (session.user.role === 'admin') {
-      // Admins can see all promo codes
-      const promoCodes = await db.collection('promoCodes')
-        .find({})
-        .sort({ createdAt: -1 })
-        .toArray();
-      
-      return NextResponse.json(promoCodes);
-    } else if (session.user.role === 'organizer') {
-      // Organizers can see promo codes for their events
-      const organizerEvents = await db.collection('events')
-        .find({ organizerId: session.user.id })
-        .project({ _id: 1 })
-        .toArray();
-      
-      const eventIds = organizerEvents.map(event => event._id);
-      
-      const promoCodes = await db.collection('promoCodes')
-        .find({ eventId: { $in: eventIds } })
-        .sort({ createdAt: -1 })
-        .toArray();
-      
-      return NextResponse.json(promoCodes);
-    } else {
-      return NextResponse.json(
-        { error: 'Event ID is required' },
-        { status: 400 }
-      );
+    // Case 3: Get all promo codes (admin only) or for an organizer's events (if no specific eventId)
+    // This part is less likely to be the cause of the edit page issue but included for completeness.
+    if (!eventId && !codeToValidate) {
+        if (session.user.role === 'admin') {
+            const allPromoCodes = await db.collection('promoCodes').find({}).sort({ createdAt: -1 }).toArray();
+            return NextResponse.json(allPromoCodes.map(pc => ({...pc, _id: pc._id.toString(), eventId: pc.eventId.toString()})));
+        } else if (session.user.role === 'organizer') {
+            const organizerEvents = await db.collection('events')
+                .find({ organizerId: new ObjectId(session.user.id) }) // Compare with ObjectId
+                .project({ _id: 1 })
+                .toArray();
+            const eventIds = organizerEvents.map(event => event._id); // These are ObjectIds
+            const organizerPromoCodes = await db.collection('promoCodes')
+                .find({ eventId: { $in: eventIds } })
+                .sort({ createdAt: -1 })
+                .toArray();
+            return NextResponse.json(organizerPromoCodes.map(pc => ({...pc, _id: pc._id.toString(), eventId: pc.eventId.toString()})));
+        } else {
+            return NextResponse.json({ error: 'Forbidden: Insufficient role for this query' }, { status: 403 });
+        }
     }
+
+    // If no specific case matched (should not happen if eventId is always passed from edit page)
+    return NextResponse.json({ error: 'Invalid request parameters for fetching promo codes' }, { status: 400 });
+
   } catch (error) {
     console.error('Error fetching promotional codes:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch promotional codes' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch promotional codes', details: error.message }, { status: 500 });
   }
 }

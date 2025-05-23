@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import React, { useState, useEffect } from 'react'; // Import useEffect
+import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { UserIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 
@@ -10,6 +10,26 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const router = useRouter();
+  const { data: session, status } = useSession(); // Get session and status
+
+  // useEffect to handle redirection after session status changes
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user?.role) {
+      const role = session.user.role;
+      if (role === 'admin') {
+        router.push('/admin/dashboard');
+      } else if (role === 'organizer') {
+        router.push('/organizer/dashboard');
+      } else {
+        // If authenticated but not admin/organizer, or if coming from a different page
+        // and already logged in, redirect to home.
+        // You might want to check router.pathname if you only want this on initial login.
+        if (router.pathname === '/login') { // Or a more specific check if needed
+            router.push('/');
+        }
+      }
+    }
+  }, [status, session, router]); // Dependencies for the effect
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -19,15 +39,14 @@ export default function LoginPage() {
       const result = await signIn('credentials', {
         username,
         password,
-        redirect: false,
+        redirect: false, // We handle redirection manually via useEffect
       });
 
       if (result?.error) {
         setError('Invalid credentials');
         return;
       }
-
-      router.push('/');
+      // No explicit router.push here; useEffect will handle it when session updates
     } catch (err) {
       setError('An error occurred while logging in.');
       console.error(err);

@@ -64,11 +64,11 @@ const SeatingArrangement = ({
                 onClick={() => onVisualSectionSelect(section.section)}
                 className={`p-3 border-2 rounded-md text-center text-sm w-full h-24 transition-all flex flex-col justify-center items-center
                             ${selectedVisualSection === section.section ? 'border-sky-500 bg-sky-100 ring-2 ring-sky-500' : 'border-gray-300 hover:border-sky-400'}
-                            ${sectionTicketTypeMap[section.section] ? 'bg-green-100 border-green-400' : 'bg-white'}`}
+                            ${sectionTicketTypeMap[section.section] ? 'bg-sky-100 border-sky-400' : 'bg-white'}`}
               >
                 <span>{section.section}</span>
                 {sectionTicketTypeMap[section.section] && ticketTypes.find(tt => (tt.id || tt._id) === sectionTicketTypeMap[section.section]) && (
-                  <span className="block text-xs text-green-700 mt-1">
+                  <span className="block text-xs text-sky-700 mt-1">
                     ({ticketTypes.find(tt => (tt.id || tt._id) === sectionTicketTypeMap[section.section]).categoryName || ticketTypes.find(tt => (tt.id || tt._id) === sectionTicketTypeMap[section.section]).category})
                   </span>
                 )}

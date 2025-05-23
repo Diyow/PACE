@@ -1,7 +1,7 @@
 // src/app/organizer/edit-event/[eventId]/page.js
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation'; // Added useSearchParams
 import {
   ArrowLeftIcon,
   EyeIcon,
@@ -9,10 +9,8 @@ import {
   ArrowPathIcon,
   TicketIcon,
   KeyIcon,
-  MapIcon, // Using MapIcon for Seating
-  CheckCircleIcon, // For success messages
-  ExclamationCircleIcon, // For error messages
-  DocumentTextIcon, // For save all button
+  MapIcon, 
+  DocumentTextIcon,
 } from '@heroicons/react/24/outline';
 import RoleGuard from '@/components/RoleGuard';
 import EventBasicInfo from '@/components/organizer/EventBasicInfo';
@@ -25,6 +23,7 @@ import { initialSeatingLayout as predefinedSeatingLayout } from '@/app/seat-sele
 const EditEventPage = () => {
   const router = useRouter();
   const params = useParams();
+  const queryParams = useSearchParams(); // To read query parameters
   const eventId = params.eventId;
 
   // Basic Info State
@@ -37,7 +36,6 @@ const EditEventPage = () => {
   const [eventPoster, setEventPoster] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [initialPosterUrl, setInitialPosterUrl] = useState(null);
-
 
   // Ticket Types State
   const [ticketTypes, setTicketTypes] = useState([]);
@@ -67,10 +65,8 @@ const EditEventPage = () => {
   const DEFAULT_TICKET_CATEGORY_NAME = "Regular";
   const DEFAULT_TICKET_PRICE = "10.00";
 
-
   const inputClass = "w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 transition-colors py-2 px-3";
   const labelClass = "block text-sm font-medium text-gray-700 mb-1";
-
 
   const formattedDate = eventData.date ? new Date(eventData.date).toLocaleDateString('en-US', {
     year: 'numeric',
@@ -81,23 +77,21 @@ const EditEventPage = () => {
   const fetchEventData = useCallback(async () => {
     if (!eventId) {
       setFetchLoading(false);
-      // If it's a new event scenario (though this page is for edit, good for robustness)
-      // Initialize sectionTicketTypeMap for a fresh setup
-      const initialMap = {};
-      predefinedSeatingLayout.forEach(section => {
-        initialMap[section.section] = ''; // No default assignment on initial load
-      });
-      setSectionTicketTypeMap(initialMap);
+      toast.error("Event ID is missing.");
+      router.push('/organizer/dashboard'); // Redirect if no eventId
       return;
     }
     setFetchLoading(true);
     try {
       const response = await fetch(`/api/events/${eventId}`);
-      if (!response.ok) throw new Error('Failed to fetch event data');
+      if (!response.ok) {
+        if (response.status === 404) throw new Error('Event not found.');
+        throw new Error('Failed to fetch event data');
+      }
       const data = await response.json();
       setEventData({
         eventName: data.name || '',
-        date: data.date || '',
+        date: data.date ? data.date.split('T')[0] : '', // Ensure date is in YYYY-MM-DD format for input
         time: data.time || '',
         description: data.description || '',
       });
@@ -109,7 +103,6 @@ const EditEventPage = () => {
         setInitialPosterUrl(null);
       }
 
-      // Fetch related ticket and seating data
       const [ticketTypesRes, promoCodesRes] = await Promise.all([
         fetch(`/api/ticket-types?eventId=${eventId}`),
         fetch(`/api/promo-codes?eventId=${eventId}`)
@@ -134,14 +127,21 @@ const EditEventPage = () => {
     } catch (err) {
       console.error('Error fetching event data:', err);
       toast.error(err.message || 'Failed to load event data.');
+      if (err.message === 'Event not found.') {
+        router.push('/organizer/dashboard');
+      }
     } finally {
       setFetchLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, router]);
 
   useEffect(() => {
     fetchEventData();
-  }, [fetchEventData]);
+    const tabFromQuery = queryParams.get('tab');
+    if (tabFromQuery) {
+        setActiveTab(tabFromQuery);
+    }
+  }, [fetchEventData, queryParams]);
 
 
   const handleBasicInfoInputChange = (event) => {
@@ -160,7 +160,7 @@ const EditEventPage = () => {
 
   const handleRemovePoster = () => {
     setEventPoster(null);
-    setPreviewUrl(null);
+    setPreviewUrl(null); // This signals removal to the backend if initialPosterUrl existed
   };
 
   // --- Ticket Types Handlers ---
@@ -180,12 +180,14 @@ const EditEventPage = () => {
       return;
     }
 
-    setIsSavingAll(true); // Indicate loading for any save operation
+    // Use a general loading state for individual actions too for consistency
+    const generalLoadingSetter = setIsSavingAll; // Or a new dedicated state if preferred
+    generalLoadingSetter(true);
     try {
       const payload = { category: newTicketType.categoryName, price, eventId };
       let response;
       if (editingTicketType) {
-        response = await fetch(`/api/ticket-types/${editingTicketType.id}`, {
+        response = await fetch(`/api/ticket-types/${editingTicketType.id || editingTicketType._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -202,14 +204,14 @@ const EditEventPage = () => {
         const errorData = await response.json();
         throw new Error(errorData.error || `Failed to ${editingTicketType ? 'update' : 'add'} ticket type`);
       }
-      await fetchEventData(); // Re-fetch to update list and ensure seating can use new IDs
+      await fetchEventData(); 
       toast.success(`Ticket type ${editingTicketType ? 'updated' : 'added'}!`);
       setNewTicketType({ categoryName: '', price: '' });
       setEditingTicketType(null);
     } catch (error) {
       toast.error(error.message);
     } finally {
-      setIsSavingAll(false);
+      generalLoadingSetter(false);
     }
   };
 
@@ -220,52 +222,36 @@ const EditEventPage = () => {
 
   const handleDeleteTicketType = async (ticketTypeIdToDelete) => {
     if (!confirm("Are you sure you want to delete this ticket type? This will also unassign it from any seating sections.")) return;
-    setIsSavingAll(true);
+    const generalLoadingSetter = setIsSavingAll;
+    generalLoadingSetter(true);
     try {
       const response = await fetch(`/api/ticket-types/${ticketTypeIdToDelete}`, { method: 'DELETE' });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to delete ticket type");
       }
-      // Update local state immediately for UI responsiveness
-      setTicketTypes(prev => prev.filter(tt => (tt.id || tt._id) !== ticketTypeIdToDelete));
-      setSectionTicketTypeMap(prevMap => {
-        const newMap = { ...prevMap };
-        for (const sectionName in newMap) {
-          if (newMap[sectionName] === ticketTypeIdToDelete) {
-            newMap[sectionName] = ''; // Unassign
-          }
-        }
-        return newMap;
-      });
-      toast.success("Ticket type deleted! Save all configurations to persist seating changes.");
+      // Re-fetch data to update UI correctly, including seating map
+      await fetchEventData();
+      toast.success("Ticket type deleted!");
     } catch (error) {
       toast.error(error.message);
     } finally {
-      setIsSavingAll(false);
+      generalLoadingSetter(false);
     }
   };
   const handleCancelEditTicketType = () => {
     setEditingTicketType(null);
     setNewTicketType({ categoryName: '', price: '' });
-  }
+  };
 
   // --- Seating Arrangement Handlers ---
-  const handleVisualSectionSelect = (sectionName) => {
-    setSelectedVisualSection(sectionName);
-  };
-
+  const handleVisualSectionSelect = (sectionName) => setSelectedVisualSection(sectionName);
   const assignTicketTypeToSection = (ticketTypeId) => {
     if (selectedVisualSection) {
-      setSectionTicketTypeMap(prev => ({
-        ...prev,
-        [selectedVisualSection]: ticketTypeId
-      }));
+      setSectionTicketTypeMap(prev => ({ ...prev, [selectedVisualSection]: ticketTypeId }));
     }
   };
-  const handleDoneWithSection = () => {
-      setSelectedVisualSection(null);
-  }
+  const handleDoneWithSection = () => setSelectedVisualSection(null);
 
   // --- Promo Codes Handlers ---
   const handleNewPromoCodeChange = (e) => {
@@ -287,12 +273,13 @@ const EditEventPage = () => {
         toast.error("Percentage discount cannot exceed 100.");
         return;
     }
-    setIsSavingAll(true);
+    const generalLoadingSetter = setIsSavingAll;
+    generalLoadingSetter(true);
     try {
       const payload = { ...newPromoCode, discountValue, eventId, maxUses: newPromoCode.maxUses ? parseInt(newPromoCode.maxUses) : null };
       let response;
       if (editingPromoCode) {
-        response = await fetch(`/api/promo-codes/${editingPromoCode.id || editingPromoCode._id}`, { // Ensure API endpoint exists for PUT
+        response = await fetch(`/api/promo-codes/${editingPromoCode.id || editingPromoCode._id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -308,14 +295,14 @@ const EditEventPage = () => {
         const errorData = await response.json();
         throw new Error(errorData.error || `Failed to ${editingPromoCode ? 'update' : 'add'} promo code`);
       }
-      await fetchEventData(); // Re-fetch
+      await fetchEventData(); 
       toast.success(`Promo code ${editingPromoCode ? 'updated' : 'added'}!`);
       setNewPromoCode({ code: '', discountType: 'percentage', discountValue: '', maxUses: '', expiryDate: '' });
       setEditingPromoCode(null);
     } catch (error) {
       toast.error(error.message);
     } finally {
-      setIsSavingAll(false);
+      generalLoadingSetter(false);
     }
   };
 
@@ -326,25 +313,26 @@ const EditEventPage = () => {
       discountType: promoCode.discountType,
       discountValue: promoCode.discountValue.toString(),
       maxUses: promoCode.maxUses?.toString() || '',
-      expiryDate: promoCode.expiryDate || ''
+      expiryDate: promoCode.expiryDate ? new Date(promoCode.expiryDate).toISOString().split('T')[0] : ''
     });
   };
 
   const handleDeletePromoCode = async (promoCodeId) => {
     if (!confirm("Are you sure you want to delete this promo code?")) return;
-    setIsSavingAll(true);
+    const generalLoadingSetter = setIsSavingAll;
+    generalLoadingSetter(true);
     try {
-        const response = await fetch(`/api/promo-codes/${promoCodeId}`, { method: 'DELETE' }); // Ensure API endpoint exists
+        const response = await fetch(`/api/promo-codes/${promoCodeId}`, { method: 'DELETE' }); 
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || "Failed to delete promo code");
         }
-        await fetchEventData(); // Re-fetch
+        await fetchEventData();
         toast.success("Promo code deleted!");
     } catch (error) {
         toast.error(error.message);
     } finally {
-        setIsSavingAll(false);
+        generalLoadingSetter(false);
     }
   };
   const handleCancelEditPromoCode = () => {
@@ -370,93 +358,83 @@ const EditEventPage = () => {
     basicInfoFormData.append('description', eventData.description);
     if (eventPoster) {
       basicInfoFormData.append('poster', eventPoster);
-    } else if (!previewUrl && initialPosterUrl) {
-      basicInfoFormData.append('posterUrl', ''); // Signal to remove poster
+    } else if (!previewUrl && initialPosterUrl) { // If previewUrl is null and there was an initial poster, it means remove
+      basicInfoFormData.append('posterUrl', ''); // Signal to backend to remove poster
     }
-    // Append existing seating and ticket categories to ensure they are not wiped out by basic info update
-    // if the PUT /api/events/[eventId] expects them or overwrites them.
-    // This depends heavily on how your PUT /api/events/[eventId] is implemented.
-    // For safety, we might need to fetch fresh event data before this step if basic info can be edited separately.
-    // However, for a "Save All", it's assumed we're saving the current state.
+    // If posterUrl is not null and no new eventPoster, the backend should keep the existing initialPosterUrl
 
     try {
       const basicInfoResponse = await fetch(`/api/events/${eventId}`, {
         method: 'PUT',
         body: basicInfoFormData,
       });
+      const updatedEventResponse = await basicInfoResponse.json();
       if (!basicInfoResponse.ok) {
-        const errorData = await basicInfoResponse.json();
-        currentErrors.push(errorData.error || 'Failed to save basic event information');
+        currentErrors.push(updatedEventResponse.error || 'Failed to save basic event information');
       } else {
         currentSuccesses.push('Basic event information saved.');
-        const updatedEventData = await basicInfoResponse.json();
-         if (updatedEventData.event && updatedEventData.event.posterUrl) {
-            setInitialPosterUrl(updatedEventData.event.posterUrl);
-            setPreviewUrl(updatedEventData.event.posterUrl);
-        } else if (basicInfoFormData.get('posterUrl') === '') {
+         if (updatedEventResponse.event && updatedEventResponse.event.posterUrl) {
+            setInitialPosterUrl(updatedEventResponse.event.posterUrl); // Update initialPosterUrl with the one from DB
+            setPreviewUrl(updatedEventResponse.event.posterUrl);
+        } else if (basicInfoFormData.get('posterUrl') === '') { // If removal was signaled and successful
             setInitialPosterUrl(null);
             setPreviewUrl(null);
         }
-        setEventPoster(null);
+        setEventPoster(null); // Clear staged file
       }
     } catch (e) {
       currentErrors.push(`Error saving basic info: ${e.message}`);
     }
-
-    // Step 2: Manage Ticket Types (Create default if none exist)
-    let currentTicketTypes = [...ticketTypes];
-    let defaultTicketTypeId = null;
-
-    if (currentTicketTypes.length === 0) {
-      try {
-        const defaultTicketPayload = { category: DEFAULT_TICKET_CATEGORY_NAME, price: parseFloat(DEFAULT_TICKET_PRICE), eventId };
-        const ttResponse = await fetch('/api/ticket-types', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(defaultTicketPayload),
-        });
-        if (!ttResponse.ok) {
-          const errorData = await ttResponse.json();
-          currentErrors.push(errorData.error || 'Failed to create default ticket type');
-        } else {
-          const savedDefaultTicket = await ttResponse.json();
-          defaultTicketTypeId = savedDefaultTicket.ticketTypeId;
-          // Add to local state for seating assignment
-          currentTicketTypes.push({ ...defaultTicketPayload, id: defaultTicketTypeId, categoryName: DEFAULT_TICKET_CATEGORY_NAME });
-          currentSuccesses.push('Default ticket type "Regular" created.');
-        }
-      } catch (e) {
-        currentErrors.push(`Error creating default ticket type: ${e.message}`);
-      }
-    }
-     // Ensure all current ticket types are persisted (if any were added/edited but not individually saved through their component buttons)
-    // This part is tricky with a single "Save All" if individual C/U is also possible.
-    // For now, we assume ticket types are managed by their individual buttons,
-    // and this "Save All" mainly persists the *assignment* to seating.
-    // If ticketTypes array changed significantly, those changes should ideally be PUT/POSTed individually first,
-    // or the event API needs to handle a full array of ticket types.
+    
+    // Step 2: Ticket Types and Promo Codes are assumed to be managed by their individual buttons
+    // which already make API calls. The "Save All" focuses on basic info and seating assignments.
+    // If you need "Save All" to also batch-update ticket types/promo codes that were changed locally
+    // but not submitted via their own buttons, the logic here and in the backend would need to be more complex.
 
     // Step 3: Prepare and Save Seating Arrangement Assignments
+    let currentTicketTypesForSeating = [...ticketTypes]; // Use the latest state of ticketTypes
+    let defaultTicketTypeIdForSeating = null;
+
+    if (currentTicketTypesForSeating.length === 0) {
+      // If user deleted all ticket types, we might need to handle how seating is saved.
+      // For now, if a section was assigned to a now-deleted type, it will be unassigned.
+      // If you want a default to be created, that logic would go here or in the backend.
+      // Consider creating a default "Regular" ticket type if none exist and sections need assignment.
+      // This part is complex if user can delete all types then hit "save all".
+      // For now, we'll proceed with currentTicketTypesForSeating as is.
+    } else {
+        const regularOrFirstType = currentTicketTypesForSeating.find(tt => (tt.categoryName || tt.category) === DEFAULT_TICKET_CATEGORY_NAME) || currentTicketTypesForSeating[0];
+        if(regularOrFirstType) defaultTicketTypeIdForSeating = regularOrFirstType.id || regularOrFirstType._id;
+    }
+
     const finalSeatingLayoutAssignments = predefinedSeatingLayout.map(section => {
-      let assignedCategory = sectionTicketTypeMap[section.section] || '';
-      if (!assignedCategory && defaultTicketTypeId) { // If no assignment and default was created
-        assignedCategory = defaultTicketTypeId;
-      } else if (!assignedCategory && currentTicketTypes.length > 0) { // If no assignment and other types exist, use first as fallback
-         const regularOrFirstType = currentTicketTypes.find(tt => (tt.categoryName || tt.category) === DEFAULT_TICKET_CATEGORY_NAME) || currentTicketTypes[0];
-         if(regularOrFirstType) assignedCategory = regularOrFirstType.id || regularOrFirstType._id;
+      let assignedCategoryId = sectionTicketTypeMap[section.section] || '';
+      
+      // If the section is unassigned, but we have ticket types, assign the default/first one.
+      if (!assignedCategoryId && defaultTicketTypeIdForSeating) {
+          assignedCategoryId = defaultTicketTypeIdForSeating;
       }
+      // If the assigned category ID is no longer in our currentTicketTypes (e.g., was deleted), unassign it.
+      if (assignedCategoryId && !currentTicketTypesForSeating.find(tt => (tt.id || tt._id) === assignedCategoryId)) {
+          assignedCategoryId = '';
+      }
+
       return {
         section: section.section,
-        rows: section.rows,
-        style: section.style,
-        assignedticketCategories: assignedCategory || null
+        rows: section.rows, // Keep original rows structure
+        style: section.style, // Keep original style
+        assignedticketCategories: assignedCategoryId || null // Send actual ID of the ticket type
       };
     });
 
     const ticketsAndSeatingPayload = {
       seatingLayout: finalSeatingLayoutAssignments,
-      // Optionally, send the full list of ticketCategories if your API updates/replaces them for the event
-      // ticketCategories: currentTicketTypes.map(tt => ({ category: tt.categoryName || tt.category, price: tt.price, eventId, _id: tt.id || tt._id /* if updating existing */ }))
+      // ticketCategories: currentTicketTypesForSeating.map(tt => ({ // Only send if API updates/replaces all
+      //   _id: tt.id || tt._id, // Include ID for existing types
+      //   category: tt.categoryName || tt.category,
+      //   price: tt.price,
+      //   eventId // Ensure eventId is associated
+      // }))
     };
 
     try {
@@ -475,20 +453,29 @@ const EditEventPage = () => {
       currentErrors.push(`Error saving seating configuration: ${e.message}`);
     }
     
-    // Promo codes are managed by their own buttons. If "Save All" needs to batch save them,
-    // it would require sending the `promoCodes` array to a specific backend endpoint for the event.
+    setIsSavingAll(false); // Set loading to false before toast and redirect
 
     if (currentErrors.length > 0) {
-      toast.error(<div>Errors occurred:<ul>{currentErrors.map((err, i) => <li key={i}>- {err}</li>)}</ul></div>, { duration: 6000 });
+      const errorMessages = currentErrors.map((err, i) => <li key={i}>- {err}</li>);
+      toast.error(<div>Errors occurred:<ul>{errorMessages}</ul></div>, { duration: 7000 });
     }
-    if (currentSuccesses.length > 0 && currentErrors.length === 0) {
-      toast.success("All configurations saved successfully!");
+    // Only redirect if all parts were successful or if only non-critical parts had issues
+    // For now, redirect if at least basic info and seating were successful.
+    if (currentSuccesses.includes('Basic event information saved.') && currentSuccesses.includes('Seating configuration saved.') && currentErrors.length === 0) {
+      toast.success("All configurations saved successfully! Redirecting to dashboard...");
+      setTimeout(() => {
+        router.push('/organizer/dashboard');
+      }, 2000);
     } else if (currentSuccesses.length > 0) {
-      toast.success(<div>Saved some parts:<ul>{currentSuccesses.map((succ, i) => <li key={i}>- {succ}</li>)}</ul></div>, { duration: 5000 });
+       const successMessages = currentSuccesses.map((succ, i) => <li key={i}>- {succ}</li>);
+       toast.success(<div>Saved some parts:<ul>{successMessages}</ul></div>, { duration: 5000 });
+       await fetchEventData(); // Refresh data if not redirecting fully
+    } else if (currentErrors.length === 0 && currentSuccesses.length === 0) {
+        toast.info("No changes detected to save."); // Or handle as a success if no changes were made
     }
 
-    await fetchEventData(); // Refresh all data from backend
-    setIsSavingAll(false);
+
+    // await fetchEventData(); // Refresh all data from backend - moved to only if not fully successful redirect
   };
 
 
@@ -544,7 +531,6 @@ const EditEventPage = () => {
               </div>
 
               <div className="p-6 md:p-8">
-                {/* Content for each tab */}
                 {activeTab === 'basic' && (
                     <EventBasicInfo
                       eventData={eventData}
@@ -564,7 +550,7 @@ const EditEventPage = () => {
                     onEditTicketType={handleEditTicketType}
                     onDeleteTicketType={handleDeleteTicketType}
                     onCancelEditTicketType={handleCancelEditTicketType}
-                    isLoading={isSavingAll}
+                    isLoading={isSavingAll} // Use general saving state for individual button loading
                     inputClass={inputClass}
                     labelClass={labelClass}
                   />
@@ -591,7 +577,7 @@ const EditEventPage = () => {
                     onEditPromoCode={handleEditPromoCode}
                     onDeletePromoCode={handleDeletePromoCode}
                     onCancelEditPromoCode={handleCancelEditPromoCode}
-                    isLoading={isSavingAll}
+                    isLoading={isSavingAll} // Use general saving state
                     inputClass={inputClass}
                     labelClass={labelClass}
                   />
@@ -637,10 +623,9 @@ const EditEventPage = () => {
                     </div>
                   </div>
                   <div className="mt-4 text-sm text-gray-500">
-                    <p>This is how your event will appear to users Browse events.</p>
+                    <p>This is how your event will appear to users.</p>
                   </div>
                 </div>
-                 {/* Save All Button */}
                 <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
                     <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
                         <DocumentTextIcon className="h-5 w-5 mr-2 text-sky-600" />
@@ -653,7 +638,7 @@ const EditEventPage = () => {
                         type="button"
                         onClick={handleSaveAllConfigurations}
                         disabled={isSavingAll || fetchLoading}
-                        className={`w-full inline-flex justify-center items-center py-3 px-6 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 
+                        className={`w-full inline-flex justify-center items-center py-3 px-6 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 
                                     ${isSavingAll || fetchLoading ? 'opacity-50 cursor-not-allowed' : 'transform transition hover:-translate-y-0.5'}`}
                     >
                         {isSavingAll ? (

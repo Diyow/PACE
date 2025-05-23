@@ -163,14 +163,15 @@ const SeatSelectionPage = () => {
         <span className="bg-blue-500 text-white px-3 py-1 rounded-md text-sm">Selected</span>
       </div>
 
+      <div className="w-full flex justify-center mb-4">
+        <div className="bg-gray-200 text-gray-700 py-2 rounded-md font-bold text-center w-full">
+          STAGE
+        </div>
+      </div>
+
       {/* Scrollable Container */}
       <div ref={scrollContainerRef} className="overflow-auto max-h-[500px] min-w-[1200px]">
         <div className="flex flex-col justify-center px-4">
-          <div className="w-full flex justify-center mb-6">
-            <div className="bg-gray-200 text-gray-700 py-2 px-4 rounded-md font-bold text-center">
-              STAGE
-            </div>
-          </div>
           <div className="flex items-start gap-8 mb-8">
             {seatingLayout.slice(0, 3).map((sectionData, sectionIndex) => (
               <div key={sectionIndex} className="flex flex-col items-center" style={sectionData.style}>

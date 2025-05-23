@@ -11,6 +11,7 @@ const PaymentPage = () => {
   const totalFromQuery = parseFloat(searchParams.get('total')) || 0;
   const [selectedSeats, setSelectedSeats] = useState([]);
   const [totalAmount, setTotalAmount] = useState(totalFromQuery);
+  const [notification, setNotification] = useState(null); // State for custom notification
 
   // Processing fee: $2 total for the entire order
   const processingFee = 2.00;
@@ -49,7 +50,8 @@ const PaymentPage = () => {
   const handlePayNow = () => {
     // In a real application, this would trigger the payment processing logic.
     // You would send the payment details, selected seats, and total amount to your backend.
-    alert('Payment initiated!');
+    setNotification('Payment initiated!');
+    setTimeout(() => setNotification(null), 3000);
     console.log('Payment Details:', {
       paymentMethod,
       cardNumber,
@@ -61,7 +63,12 @@ const PaymentPage = () => {
   };
 
   return (
-    <div className="font-sans max-w-md mx-auto mt-10 p-6 bg-gray-100 rounded-md shadow-md">
+    <div className="font-sans max-w-md mx-auto mt-10 p-6 bg-gray-100 rounded-md shadow-md relative">
+      {notification && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white py-2 px-4 rounded-md shadow-md z-50">
+          {notification}
+        </div>
+      )}
       <main className="flex flex-col gap-6">
         <div className="bg-white p-6 rounded-md border border-gray-200">
           <h2 className="text-xl font-bold mb-4 text-gray-800">Order Summary</h2>

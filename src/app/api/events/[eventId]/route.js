@@ -8,12 +8,11 @@ import { v2 as cloudinary } from 'cloudinary';
 import { uploadImageToCloudinary } from '@/lib/cloudinary';
 
 const DEFAULT_TICKET_CATEGORY_NAME = "Regular";
-const DEFAULT_TICKET_PRICE = "10.00"; // Ensure this is consistent if used
+const DEFAULT_TICKET_PRICE = "10.00";
 
-// GET and DELETE functions remain the same as previously provided ...
 export async function GET(request, context) {
   try {
-    const paramsObject = await context.params; // Correctly await context.params
+    const paramsObject = await context.params;
     const eventId = paramsObject.eventId;
 
     if (!eventId || !ObjectId.isValid(eventId)) {
@@ -34,7 +33,61 @@ export async function GET(request, context) {
         { status: 404 }
       );
     }
-    return NextResponse.json(event);
+
+    // --- Fetch Organizer Details ---
+    let organizerName = 'PACE Events Platform'; 
+    if (event.organizerId && ObjectId.isValid(event.organizerId.toString())) { // Ensure organizerId is valid before querying
+      const organizer = await db.collection('users').findOne(
+        { _id: new ObjectId(event.organizerId.toString()) },
+        { projection: { fullName: 1, organizationName: 1 } } 
+      );
+      if (organizer) {
+        organizerName = organizer.organizationName || organizer.fullName || organizerName;
+      }
+    }
+    event.organizerName = organizerName;
+
+    // --- Calculate Ticket Statistics ---
+    let totalCapacity = 0;
+    if (event.seatingLayout && Array.isArray(event.seatingLayout)) {
+      event.seatingLayout.forEach(section => {
+        if (section.rows && typeof section.rows === 'object') {
+          Object.values(section.rows).forEach(rowSeatsArray => {
+            if (Array.isArray(rowSeatsArray)) {
+              totalCapacity += rowSeatsArray.length;
+            }
+          });
+        }
+      });
+    }
+    event.totalCapacity = totalCapacity;
+
+    const ticketsPurchased = await db.collection('tickets').countDocuments({
+      eventId: new ObjectId(eventId),
+      status: 'Confirmed' // ***** MODIFIED LINE: Changed from 'confirmed' to 'Confirmed' *****
+    });
+    event.ticketsPurchased = ticketsPurchased;
+    event.ticketsAvailable = Math.max(0, totalCapacity - ticketsPurchased); 
+
+    // Convert ObjectIds to strings for client-side compatibility for the main event object
+    const sanitizedEvent = {
+        ...event,
+        _id: event._id.toString(),
+        organizerId: event.organizerId ? event.organizerId.toString() : null,
+        // Other ObjectId fields in the event object if any should also be converted
+        // seatingLayout and ticketCategories might contain ObjectIds if they are references,
+        // but typically they are embedded arrays of objects or primitive values.
+        // If they do contain ObjectIds that client needs as strings, map over them here.
+        // For example, if ticketCategories had _id fields from a ticketTypes collection:
+        ticketCategories: event.ticketCategories ? event.ticketCategories.map(tc => ({
+            ...tc,
+            _id: tc._id ? tc._id.toString() : undefined // If ticket categories have their own _ids
+        })) : [],
+        promoCodeIds: event.promoCodeIds ? event.promoCodeIds.map(id => id.toString()) : [],
+    };
+
+
+    return NextResponse.json(sanitizedEvent);
   } catch (error) {
     console.error('Error fetching event:', error);
     return NextResponse.json(
@@ -44,9 +97,10 @@ export async function GET(request, context) {
   }
 }
 
+// PUT and DELETE functions remain the same as previously provided ...
 export async function PUT(request, context) {
   try {
-    const paramsObject = await context.params; // Correctly await context.params
+    const paramsObject = await context.params; 
     const eventId = paramsObject.eventId;
 
     if (!eventId || !ObjectId.isValid(eventId)) {
@@ -74,16 +128,19 @@ export async function PUT(request, context) {
     const updateFields = { updatedAt: new Date() };
     let isDefaultCategoryReferencedBySeatingLayout = false;
 
-    // Basic event details
-    if (formData.has('eventName')) {
-        updateFields.name = formData.get('eventName'); // 'name' is the DB field
-    }
+    // Basic event fields
+    if (formData.has('eventName')) updateFields.name = formData.get('eventName');
     if (formData.has('date')) updateFields.date = formData.get('date');
     if (formData.has('time')) updateFields.time = formData.get('time');
     if (formData.has('description')) updateFields.description = formData.get('description');
     if (formData.has('status')) updateFields.status = formData.get('status');
+    if (formData.has('organizerId') && ObjectId.isValid(formData.get('organizerId'))) { // If admin changes organizer
+        if (session.user.role === 'admin') {
+             updateFields.organizerId = new ObjectId(formData.get('organizerId'));
+        }
+    }
 
-    // Poster handling (same as previous correct version)
+
     const newPosterFile = formData.get('poster');
     const removePosterFlag = formData.get('removePoster') === 'true';
     if (removePosterFlag) {
@@ -107,7 +164,6 @@ export async function PUT(request, context) {
       }
     }
     
-    // SeatingLayout: Default unassigned to "Regular"
     if (formData.has('seatingLayout')) {
       try {
         const seatingLayoutString = formData.get('seatingLayout');
@@ -119,18 +175,34 @@ export async function PUT(request, context) {
               finalAssignedCategoryName = DEFAULT_TICKET_CATEGORY_NAME;
               isDefaultCategoryReferencedBySeatingLayout = true;
             }
+            // Ensure rows data is structured as expected by other parts of the system
+            // Example: if rows should be { A: [{number:1},...], B: ... }
+            let processedRows = {};
+            if (typeof sl.rows === 'object' && sl.rows !== null) {
+                Object.entries(sl.rows).forEach(([rowKey, seatsArray]) => {
+                    if (Array.isArray(seatsArray)) {
+                        processedRows[rowKey] = seatsArray.map(seat => (typeof seat === 'object' ? seat : { number: seat, status: 'available' }));
+                    } else {
+                         console.warn(`Row ${rowKey} in section ${sl.section} is not an array.`);
+                         processedRows[rowKey] = []; // Default to empty array if format is incorrect
+                    }
+                });
+            }
+
             return {
               section: sl.section,
-              rows: sl.rows,
+              rows: processedRows, // Use processed rows
               style: sl.style,
               assignedCategoryName: finalAssignedCategoryName
             };
           });
         } else { throw new Error("seatingLayout form data is not an array string."); }
-      } catch (e) { return NextResponse.json({ error: 'Invalid format for seatingLayout. Must be a JSON array string.' }, { status: 400 });}
+      } catch (e) { 
+        console.error("Error processing seatingLayout in PUT:", e);
+        return NextResponse.json({ error: 'Invalid format for seatingLayout. Must be a JSON array string.' }, { status: 400 });
+      }
     }
 
-    // TicketCategories: Ensure "Regular" exists if referenced by seating
     if (formData.has('ticketCategories')) {
       try {
         const ticketCategoriesString = formData.get('ticketCategories');
@@ -139,6 +211,7 @@ export async function PUT(request, context) {
           updateFields.ticketCategories = parsedTicketCategories.map(tc => ({
             category: tc.category,
             price: parseFloat(tc.price)
+            // _id: tc._id ? new ObjectId(tc._id) : new ObjectId() // Handle _id if you are managing ticketCategories as separate docs
           }));
 
           if (isDefaultCategoryReferencedBySeatingLayout) {
@@ -148,22 +221,35 @@ export async function PUT(request, context) {
             if (!defaultExists) {
               updateFields.ticketCategories.push({
                 category: DEFAULT_TICKET_CATEGORY_NAME,
-                price: parseFloat(DEFAULT_TICKET_PRICE) // Ensure you have a default price
+                price: parseFloat(DEFAULT_TICKET_PRICE) 
               });
             }
           }
         } else { throw new Error("ticketCategories form data is not an array string."); }
-      } catch (e) { return NextResponse.json({ error: 'Invalid format for ticketCategories. Must be a JSON array string.' }, { status: 400 });}
-    } else if (isDefaultCategoryReferencedBySeatingLayout) {
-        // If no ticket categories were sent but default is needed for seating
-        updateFields.ticketCategories = [{
+      } catch (e) { 
+        console.error("Error processing ticketCategories in PUT:", e);
+        return NextResponse.json({ error: 'Invalid format for ticketCategories. Must be a JSON array string.' }, { status: 400 });
+      }
+    } else if (isDefaultCategoryReferencedBySeatingLayout && !updateFields.ticketCategories && existingEvent.ticketCategories) {
+        // If no new ticket categories are provided, but default is referenced,
+        // ensure default exists in the existing categories or add it.
+        const defaultExistsInExisting = existingEvent.ticketCategories.some(
+            tc => tc.category.toLowerCase() === DEFAULT_TICKET_CATEGORY_NAME.toLowerCase()
+        );
+        if (!defaultExistsInExisting) {
+            updateFields.ticketCategories = [
+                ...existingEvent.ticketCategories,
+                { category: DEFAULT_TICKET_CATEGORY_NAME, price: parseFloat(DEFAULT_TICKET_PRICE) }
+            ];
+        }
+    } else if (isDefaultCategoryReferencedBySeatingLayout && !updateFields.ticketCategories && !existingEvent.ticketCategories) {
+         updateFields.ticketCategories = [{
             category: DEFAULT_TICKET_CATEGORY_NAME,
             price: parseFloat(DEFAULT_TICKET_PRICE)
         }];
     }
 
 
-    // --- PROMO CODE SYNCHRONIZATION LOGIC (Using the robust version from prior responses) ---
     const finalPromoCodeObjectIds = []; 
     if (formData.has('promoCodes')) {
       const promoCodesString = formData.get('promoCodes');
@@ -195,41 +281,37 @@ export async function PUT(request, context) {
         };
         let promoObjectId;
 
-        if (submittedPc._id) { 
+        if (submittedPc._id && ObjectId.isValid(submittedPc._id)) { 
           const existingDbVersion = existingDbCodesMap.get(submittedPc._id.toString());
           if (existingDbVersion) {
             pcData.currentUses = existingDbVersion.currentUses; 
             if (submittedPc.hasOwnProperty('currentUses') && parseInt(submittedPc.currentUses) !== existingDbVersion.currentUses) {
                  pcData.currentUses = parseInt(submittedPc.currentUses);
             }
-            if (existingDbVersion.code !== codeStr) {
-                const conflict = existingDbPromoCodes.find(p => p.code === codeStr && p._id.toString() !== submittedPc._id.toString());
-                if (conflict) {
-                    console.warn(`Promo code update for _id ${submittedPc._id} to code "${codeStr}" conflicts. Keeping original.`);
-                    finalPromoCodeObjectIds.push(existingDbVersion._id); 
-                    processedSubmittedIds.add(existingDbVersion._id.toString());
-                    continue;
+            if (existingDbVersion.code !== codeStr) { // If code string is being changed
+                const conflictByNewCode = await db.collection('promoCodes').findOne({ eventId: new ObjectId(eventId), code: codeStr, _id: { $ne: existingDbVersion._id } });
+                if (conflictByNewCode) {
+                    console.warn(`Promo code update for _id ${submittedPc._id} to code "${codeStr}" conflicts with another existing code. Keeping original code "${existingDbVersion.code}".`);
+                    pcData.code = existingDbVersion.code; // Revert to original code to avoid conflict
                 }
             }
             await db.collection('promoCodes').updateOne({ _id: existingDbVersion._id }, { $set: pcData });
             promoObjectId = existingDbVersion._id;
-          } else {
-            console.warn(`Promo code with _id ${submittedPc._id} submitted but not found. Attempting to treat as new based on code string.`);
-            // Fallback: try to find by code string if ID match failed, or create if not found by code string
-             const existingByCode = existingDbPromoCodes.find(p => p.code === codeStr);
-             if (existingByCode) {
+          } else { // Submitted _id not found in DB for this event, treat as new if code doesn'
+            const existingByCode = await db.collection('promoCodes').findOne({ eventId: new ObjectId(eventId), code: codeStr });
+             if (existingByCode) { // Code string already exists, update that one instead
                 pcData.currentUses = existingByCode.currentUses;
                  if (submittedPc.hasOwnProperty('currentUses') && parseInt(submittedPc.currentUses) !== existingByCode.currentUses) {pcData.currentUses = parseInt(submittedPc.currentUses);}
                 await db.collection('promoCodes').updateOne({ _id: existingByCode._id }, { $set: pcData });
                 promoObjectId = existingByCode._id;
-             } else {
+             } else { // Neither _id nor code string exists, create new
                 pcData.createdAt = new Date(); pcData.currentUses = 0;
                 const insertResult = await db.collection('promoCodes').insertOne(pcData);
                 promoObjectId = insertResult.insertedId;
              }
           }
-        } else { 
-          const existingByCode = existingDbPromoCodes.find(p => p.code === codeStr);
+        } else { // No _id submitted, check by code string
+          const existingByCode = await db.collection('promoCodes').findOne({ eventId: new ObjectId(eventId), code: codeStr });
           if (existingByCode) {
             pcData.currentUses = existingByCode.currentUses;
              if (submittedPc.hasOwnProperty('currentUses') && parseInt(submittedPc.currentUses) !== existingByCode.currentUses) {pcData.currentUses = parseInt(submittedPc.currentUses);}
@@ -247,20 +329,21 @@ export async function PUT(request, context) {
         }
       }
 
+      // Delete promo codes from DB that were not in the submitted list
       for (const dbPc of existingDbPromoCodes) {
         if (!processedSubmittedIds.has(dbPc._id.toString())) {
           await db.collection('promoCodes').deleteOne({ _id: dbPc._id });
         }
       }
-      updateFields.promoCodeIds = finalPromoCodeObjectIds;
-    } 
-    // If formData does not have 'promoCodes', promoCodeIds in updateFields will not be set,
-    // meaning the event's promoCodeIds array remains unchanged from what's in existingEvent.
-    // This is intentional: if the client doesn't send the field, we assume no change to this aspect.
-    // If client sends an empty array, all promo codes for the event will be deleted.
+      updateFields.promoCodeIds = finalPromoCodeObjectIds; // Update event with the final list of associated promo code ObjectIds
+    } else if (formData.has('promoCodes') && formData.get('promoCodes') === '[]') { // Explicitly empty array means clear all
+        await db.collection('promoCodes').deleteMany({ eventId: new ObjectId(eventId) });
+        updateFields.promoCodeIds = [];
+    }
+    // If 'promoCodes' is not in formData at all, existing promoCodeIds on event are untouched (unless modified by other logic)
 
-    // Perform the update to the event document
-    if (Object.keys(updateFields).length > 1 || updateFields.updatedAt) { // Check if there's more than just updatedAt
+
+    if (Object.keys(updateFields).length > 1 || (Object.keys(updateFields).length === 1 && updateFields.updatedAt) ) { 
         const updateResult = await db.collection('events').updateOne(
           { _id: new ObjectId(eventId) },
           { $set: updateFields }
@@ -269,25 +352,78 @@ export async function PUT(request, context) {
         if (updateResult.matchedCount === 0) {
             return NextResponse.json({ error: 'Event not found for update (race condition or ID issue)' }, { status: 404 });
         }
-        if (updateResult.modifiedCount === 0 && Object.keys(updateFields).length > 1) { 
-            console.warn(`Event ${eventId} PUT request resulted in no document modifications besides updatedAt.`);
+        // if (updateResult.modifiedCount === 0 && Object.keys(updateFields).length > 1 && !formData.has('removePoster')) { 
+        //     // The removePoster logic might not count as a modification if fields were already null
+        //     console.warn(`Event ${eventId} PUT request resulted in no document modifications besides updatedAt.`);
+        // }
+
+        // *** Synchronize 'seats' collection if seatingLayout was updated ***
+        if (updateFields.seatingLayout && Array.isArray(updateFields.seatingLayout)) {
+            try {
+                await db.collection('seats').deleteMany({ eventId: new ObjectId(eventId) });
+                console.log(`Cleared existing seat documents for event ${eventId} during update.`);
+            } catch (deletionError) {
+                console.error(`Error clearing existing seats for event ${eventId}:`, deletionError);
+            }
+
+            const seatsToCreateInCollection = [];
+            for (const section of updateFields.seatingLayout) {
+                if (section.rows && typeof section.rows === 'object') {
+                for (const rowKey in section.rows) {
+                    if (Array.isArray(section.rows[rowKey])) {
+                    for (const seatObj of section.rows[rowKey]) {
+                        seatsToCreateInCollection.push({
+                        eventId: new ObjectId(eventId),
+                        section: section.section,
+                        row: rowKey,
+                        seatNumber: String(seatObj.number),
+                        status: 'available', 
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                        });
+                    }
+                    }
+                }
+                }
+            }
+            if (seatsToCreateInCollection.length > 0) {
+                try {
+                await db.collection('seats').insertMany(seatsToCreateInCollection, { ordered: false });
+                console.log(`Re-created ${seatsToCreateInCollection.length} seat documents for event ${eventId} after layout update.`);
+                } catch (seatCreationError) {
+                console.error(`Error re-creating seat documents for event ${eventId}:`, seatCreationError);
+                }
+            }
         }
+        // *** END OF SEAT SYNCHRONIZATION ***
+
     } else {
-        console.log(`No fields to update for event ${eventId} besides updatedAt.`);
+        console.log(`No fields to update for event ${eventId} besides updatedAt (or only poster removal).`);
     }
 
-
     const updatedEventFromDb = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
+    // Sanitize event for response
+    const sanitizedUpdatedEvent = updatedEventFromDb ? {
+        ...updatedEventFromDb,
+        _id: updatedEventFromDb._id.toString(),
+        organizerId: updatedEventFromDb.organizerId ? updatedEventFromDb.organizerId.toString() : null,
+        promoCodeIds: updatedEventFromDb.promoCodeIds ? updatedEventFromDb.promoCodeIds.map(id => id.toString()) : [],
+         ticketCategories: updatedEventFromDb.ticketCategories ? updatedEventFromDb.ticketCategories.map(tc => ({
+            ...tc,
+            _id: tc._id ? tc._id.toString() : undefined
+        })) : [],
+    } : null;
+
+
     return NextResponse.json({
       message: 'Event updated successfully',
-      event: updatedEventFromDb
+      event: sanitizedUpdatedEvent
     });
 
   } catch (error) {
     console.error('Error updating event:', error);
-    // Ensure a response is always returned
     let errorMessage = 'Failed to update event';
-    if (error instanceof Error) { // Basic check if error is an Error object
+    if (error instanceof Error) { 
         errorMessage = error.message || errorMessage;
     } else if (typeof error === 'string') {
         errorMessage = error;
@@ -301,7 +437,7 @@ export async function PUT(request, context) {
 
 export async function DELETE(request, context) {
   try {
-    const paramsObject = await context.params; // Correctly await context.params
+    const paramsObject = await context.params; 
     const eventId = paramsObject.eventId;
 
     if (!eventId || !ObjectId.isValid(eventId)) {
@@ -329,8 +465,13 @@ export async function DELETE(request, context) {
       try { await cloudinary.uploader.destroy(existingEvent.cloudinaryPublicId); } catch (e) { console.warn("Cloudinary: Failed to delete poster during event deletion:", e.message); }
     }
     
+    // Delete associated data
     await db.collection('promoCodes').deleteMany({ eventId: new ObjectId(eventId) });
-    // TODO: Add deletion for other related data: ticketTypes (if not embedded), bookings, tickets, waitlist.
+    await db.collection('ticketTypes').deleteMany({ eventId: new ObjectId(eventId) });
+    await db.collection('bookings').deleteMany({ eventId: new ObjectId(eventId) });
+    await db.collection('tickets').deleteMany({ eventId: new ObjectId(eventId) });
+    await db.collection('waitlist').deleteMany({ eventId: new ObjectId(eventId) });
+    await db.collection('seats').deleteMany({ eventId: new ObjectId(eventId) }); // Also delete seats from the 'seats' collection
 
     const deleteResult = await db.collection('events').deleteOne({ _id: new ObjectId(eventId) });
 

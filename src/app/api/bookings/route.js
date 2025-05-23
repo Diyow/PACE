@@ -1,141 +1,225 @@
+// src/app/api/bookings/route.js
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
 import { ObjectId } from 'mongodb';
 import { authOptions } from '@/lib/auth';
+import { sendEmail, getBookingConfirmationEmail } from '@/utils/email';
 
 // CREATE - Create a new booking
 export async function POST(request) {
   try {
     const data = await request.json();
-    const { eventId, ticketTypeIds, quantities } = data;
+    const { eventId, ticketTypeIds, quantities, paymentStatusOverride, _detailedSelectedSeats } = data; 
     
-    // Validate required fields
-    if (!eventId || !ticketTypeIds || !quantities || ticketTypeIds.length !== quantities.length) {
-      return NextResponse.json(
-        { error: 'Event ID, ticket type IDs, and quantities are required and must match' },
-        { status: 400 }
-      );
+    if (!eventId) {
+      return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
+    }
+    if (!_detailedSelectedSeats && (!ticketTypeIds || !quantities || ticketTypeIds.length !== quantities.length)) {
+        return NextResponse.json({ error: 'Either detailed selected seats or ticket type IDs and quantities are required and must match' }, { status: 400 });
     }
     
-    // Get the current user session
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!session || !session.user || !session.user.id) {
+      return NextResponse.json({ error: 'Unauthorized - User session is invalid or user ID is missing.' }, { status: 401 });
     }
     
     const { db } = await connectToDatabase();
     
-    // Check if the event exists
-    const event = await db.collection('events').findOne({
-      _id: new ObjectId(eventId)
-    });
-    
+    const event = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
     if (!event) {
-      return NextResponse.json(
-        { error: 'Event not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
     }
     
-    // Validate ticket types and calculate total amount
     let totalAmount = 0;
     const ticketDetails = [];
-    
-    for (let i = 0; i < ticketTypeIds.length; i++) {
-      const ticketTypeId = ticketTypeIds[i];
-      const quantity = parseInt(quantities[i]);
-      
-      if (quantity <= 0) {
-        return NextResponse.json(
-          { error: 'Quantity must be greater than 0' },
-          { status: 400 }
-        );
-      }
-      
-      const ticketType = await db.collection('ticketTypes').findOne({
-        _id: new ObjectId(ticketTypeId),
-        eventId: new ObjectId(eventId)
-      });
-      
-      if (!ticketType) {
-        return NextResponse.json(
-          { error: `Ticket type with ID ${ticketTypeId} not found for this event` },
-          { status: 404 }
-        );
-      }
-      
-      totalAmount += ticketType.price * quantity;
-      
-      ticketDetails.push({
-        ticketTypeId: new ObjectId(ticketTypeId),
-        category: ticketType.category,
-        price: ticketType.price,
-        quantity: quantity
-      });
+
+    if (_detailedSelectedSeats && Array.isArray(_detailedSelectedSeats) && _detailedSelectedSeats.length > 0) {
+        console.log("Processing _detailedSelectedSeats:", JSON.stringify(_detailedSelectedSeats, null, 2));
+        for (const seat of _detailedSelectedSeats) {
+            const seatPrice = parseFloat(seat.price);
+            if (isNaN(seatPrice)) {
+                 return NextResponse.json({ error: `Invalid price for seat in category ${seat.category}` }, { status: 400 });
+            }
+
+            let derivedTicketTypeId = seat.ticketTypeId ? new ObjectId(seat.ticketTypeId) : null;
+
+            if (!derivedTicketTypeId && seat.category) {
+                const tt = await db.collection('ticketTypes').findOne({ eventId: new ObjectId(eventId), category: seat.category });
+                if (tt) {
+                    derivedTicketTypeId = tt._id;
+                } else {
+                    console.warn(`TicketType for category '${seat.category}' not found for event ${eventId}. Price from seat selection will be used for booking detail. TicketTypeId will be null.`);
+                }
+            }
+            
+            totalAmount += seatPrice; // Use price from selected seat as authoritative for this loop
+            ticketDetails.push({
+                ticketTypeId: derivedTicketTypeId,
+                category: seat.category, // Category from selected seat
+                price: seatPrice,        // Price from selected seat
+                quantity: 1,
+                seatInfo: seat.seatInfo || `${seat.section}-${seat.row}${seat.seat}`
+            });
+        }
+    } else if (ticketTypeIds && quantities) {
+        for (let i = 0; i < ticketTypeIds.length; i++) {
+            const ticketTypeIdStr = ticketTypeIds[i];
+            const quantity = parseInt(quantities[i]);
+            if (quantity <= 0) return NextResponse.json({ error: 'Quantity must be greater than 0' }, { status: 400 });
+            if (!ObjectId.isValid(ticketTypeIdStr)) return NextResponse.json({ error: `Invalid TicketType ID format: ${ticketTypeIdStr}` }, { status: 400 });
+            
+            const ticketType = await db.collection('ticketTypes').findOne({ _id: new ObjectId(ticketTypeIdStr), eventId: new ObjectId(eventId) });
+            if (!ticketType) return NextResponse.json({ error: `Ticket type with ID ${ticketTypeIdStr} not found` }, { status: 404 });
+            
+            totalAmount += parseFloat(ticketType.price) * quantity;
+            ticketDetails.push({
+                ticketTypeId: new ObjectId(ticketTypeIdStr),
+                category: ticketType.category,
+                price: parseFloat(ticketType.price),
+                quantity: quantity
+            });
+        }
+    } else {
+        return NextResponse.json({ error: 'No ticket information provided' }, { status: 400 });
     }
-    
-    // Create the booking
+
     const booking = {
       eventId: new ObjectId(eventId),
-      attendeeId: session.user.id,
-      ticketDetails: ticketDetails,
-      totalAmount: totalAmount,
+      attendeeId: new ObjectId(session.user.id), 
+      ticketDetails: ticketDetails, 
+      totalAmount: totalAmount, 
       bookingDate: new Date(),
-      paymentStatus: 'pending', // pending, completed, cancelled
+      paymentStatus: paymentStatusOverride || 'pending', 
       createdAt: new Date(),
       updatedAt: new Date()
     };
     
     const result = await db.collection('bookings').insertOne(booking);
+    const bookingId = result.insertedId;
     
-    // Create tickets for the booking
     const tickets = [];
     for (const detail of ticketDetails) {
       for (let i = 0; i < detail.quantity; i++) {
         tickets.push({
-          bookingId: result.insertedId,
+          bookingId: bookingId,
           eventId: new ObjectId(eventId),
-          ticketTypeId: detail.ticketTypeId,
-          attendeeId: session.user.id,
-          status: 'reserved', // reserved, confirmed, cancelled
+          ticketTypeId: detail.ticketTypeId, // Already an ObjectId or null from above
+          attendeeId: new ObjectId(session.user.id),
+          status: (booking.paymentStatus === 'completed') ? 'Confirmed' : 'Reserved', 
+          seatInfo: detail.seatInfo || null, 
           createdAt: new Date(),
           updatedAt: new Date()
         });
       }
     }
     
+    let ticketInsertResult;
     if (tickets.length > 0) {
-      await db.collection('tickets').insertMany(tickets);
+      ticketInsertResult = await db.collection('tickets').insertMany(tickets);
+    }
+
+    // *** REVISED LOGIC: Update seat statuses if booking is completed ***
+    if (booking.paymentStatus === 'completed' && _detailedSelectedSeats && Array.isArray(_detailedSelectedSeats) && _detailedSelectedSeats.length > 0) {
+      console.log("Attempting to update seat statuses for completed booking...");
+      for (const seat of _detailedSelectedSeats) {
+        // seat object from _detailedSelectedSeats should have: section, row, seat (number/identifier)
+        console.log("Processing seat for status update:", JSON.stringify(seat));
+        if (seat.section && seat.row && seat.seat !== undefined) {
+          const queryCriteria = {
+            eventId: new ObjectId(eventId),
+            section: seat.section,
+            row: seat.row, 
+            seatNumber: String(seat.seat) // Convert seat number from frontend to string for matching
+          };
+          console.log("Using query criteria for seat update:", JSON.stringify(queryCriteria));
+          
+          try {
+            const updateResult = await db.collection('seats').updateOne(
+              queryCriteria,
+              { $set: { status: 'occupied', updatedAt: new Date() } }
+            );
+
+            if (updateResult.matchedCount === 0) {
+              console.warn(`Seat not found for update with current criteria. Event: ${eventId}, Section: ${seat.section}, Row: ${seat.row}, SeatNumber: ${String(seat.seat)}. Double-check 'seats' collection documents and query fields.`);
+            } else if (updateResult.modifiedCount > 0) {
+              console.log(`Seat status updated successfully: Event ${eventId}, Section ${seat.section}, Row ${seat.row}, SeatNumber ${String(seat.seat)}`);
+            } else {
+              console.warn(`Seat found but not modified (already occupied or no change needed?): Event ${eventId}, Section ${seat.section}, Row ${seat.row}, SeatNumber ${String(seat.seat)}`);
+            }
+          } catch (updateError) {
+            console.error(`Error during seat update for Event ${eventId}, Seat ${seat.section}-${seat.row}${seat.seat}:`, updateError);
+          }
+
+        } else {
+          console.warn("Skipping seat status update due to missing section, row, or seat identifier in _detailedSelectedSeats item:", JSON.stringify(seat));
+        }
+      }
+    }
+    // *** END OF REVISED LOGIC ***
+    
+    if (bookingId && tickets.length > 0 && booking.paymentStatus === 'completed') {
+      let attendeeEmail = session.user.email;
+      let attendeeName = session.user.name || 'Valued Customer';
+
+      if (!attendeeEmail || (session.user.name && !attendeeName)) { // Check if name is also missing if session.user.name exists
+        const attendeeUser = await db.collection('users').findOne({ _id: new ObjectId(session.user.id) });
+        attendeeEmail = attendeeEmail || attendeeUser?.email;
+        attendeeName = attendeeName || attendeeUser?.fullName || 'Valued Customer';
+      }
+
+      if (attendeeEmail) {
+        const eventDetailsForEmail = await db.collection('events').findOne({ _id: new ObjectId(eventId) }, { projection: { name: 1, date: 1, time: 1 } });
+        const emailData = {
+            bookingId: bookingId.toString(),
+            eventName: eventDetailsForEmail.name,
+            eventDate: new Date(`${eventDetailsForEmail.date}T${eventDetailsForEmail.time || '00:00:00'}`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+            tickets: ticketDetails.map(td => ({
+                category: td.category,
+                quantity: td.quantity,
+                price: td.price,
+                seatInfo: td.seatInfo
+            })),
+            totalAmount: totalAmount,
+            attendeeName: attendeeName,
+        };
+        try {
+            const { subject, html } = getBookingConfirmationEmail(emailData);
+            await sendEmail({ to: attendeeEmail, subject, html });
+            console.log("Booking confirmation email sent to:", attendeeEmail);
+        } catch (emailError) {
+            console.error('Failed to send booking confirmation email:', emailError);
+        }
+      } else {
+        console.warn("Attendee email not found, cannot send booking confirmation email for booking ID:", bookingId);
+      }
     }
     
     return NextResponse.json({
       message: 'Booking created successfully',
-      bookingId: result.insertedId,
-      totalAmount: totalAmount
+      bookingId: bookingId,
+      totalAmount: totalAmount,
+      ticketsCreated: ticketInsertResult ? ticketInsertResult.insertedCount : 0
     }, { status: 201 });
+
   } catch (error) {
     console.error('Error creating booking:', error);
+    if (error instanceof SyntaxError && error.message.includes("JSON")) {
+        return NextResponse.json({ error: 'Invalid JSON in request body' }, { status: 400 });
+    }
     return NextResponse.json(
-      { error: 'Failed to create booking' },
+      { error: 'Failed to create booking', details: error.message },
       { status: 500 }
     );
   }
 }
 
-// READ - Get all bookings for the current user
+// GET function (no changes from previous version, ensure it stringifies ObjectIds for client)
 export async function GET(request) {
   try {
-    // Get the current user session
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    if (!session || !session.user || !session.user.id) {
+      return NextResponse.json( { error: 'Unauthorized' }, { status: 401 });
     }
     
     const { searchParams } = new URL(request.url);
@@ -143,75 +227,59 @@ export async function GET(request) {
     
     const { db } = await connectToDatabase();
     
-    // Build the query based on provided parameters
-    const query = { attendeeId: session.user.id };
+    const query = { attendeeId: new ObjectId(session.user.id) }; 
     if (eventId) {
+      if (!ObjectId.isValid(eventId)) return NextResponse.json({ error: 'Invalid Event ID format for query' }, { status: 400 });
       query.eventId = new ObjectId(eventId);
     }
     
-    // For admin or organizer, allow fetching all bookings
     if (['admin', 'organizer'].includes(session.user.role)) {
       if (session.user.role === 'organizer') {
-        // Organizers can only see bookings for their events
-        if (eventId) {
-          // Check if the event belongs to the organizer
-          const event = await db.collection('events').findOne({
-            _id: new ObjectId(eventId),
-            organizerId: session.user.id
-          });
-          
-          if (!event) {
-            return NextResponse.json(
-              { error: 'You do not have permission to view bookings for this event' },
-              { status: 403 }
-            );
-          }
-        } else {
-          // If no eventId provided, get all events by this organizer
-          const organizerEvents = await db.collection('events')
-            .find({ organizerId: session.user.id })
+        const organizerEvents = await db.collection('events')
+            .find({ organizerId: new ObjectId(session.user.id) }) 
             .project({ _id: 1 })
             .toArray();
-          
-          const eventIds = organizerEvents.map(event => event._id);
-          query.eventId = { $in: eventIds };
+        const eventIds = organizerEvents.map(event => event._id);
+        if (eventId) { 
+            if (!eventIds.some(orgEventId => orgEventId.equals(query.eventId))) { 
+                 return NextResponse.json({ error: 'You do not have permission to view bookings for this event' }, { status: 403 });
+            }
+        } else { 
+            query.eventId = { $in: eventIds };
         }
+        delete query.attendeeId; 
       } else if (session.user.role === 'admin') {
-        // Admins can see all bookings or filter by eventId
+        delete query.attendeeId; // Admin sees all users' bookings if not filtering by attendee
         if (eventId) {
-          query.eventId = new ObjectId(eventId);
-        } else {
-          // If no filters, remove the attendeeId filter for admins
-          delete query.attendeeId;
+            // query.eventId is already set if admin filters by event
         }
       }
     }
     
-    // Fetch bookings from the database
-    const bookings = await db.collection('bookings')
-      .find(query)
-      .sort({ createdAt: -1 })
-      .toArray();
+    const bookings = await db.collection('bookings').find(query).sort({ createdAt: -1 }).toArray();
     
-    // Fetch event details for each booking
     const bookingsWithEventDetails = await Promise.all(bookings.map(async (booking) => {
       const event = await db.collection('events').findOne(
-        { _id: booking.eventId },
-        { projection: { name: 1, date: 1, time: 1 } }
+        { _id: booking.eventId }, 
+        { projection: { name: 1, date: 1, time: 1, posterUrl: 1 } }
       );
-      
+      const sanitizedTicketDetails = booking.ticketDetails.map(td => ({
+          ...td,
+          ticketTypeId: td.ticketTypeId ? td.ticketTypeId.toString() : null
+      }));
       return {
         ...booking,
-        event: event || { name: 'Unknown Event' }
+        _id: booking._id.toString(),
+        eventId: booking.eventId.toString(),
+        attendeeId: booking.attendeeId.toString(),
+        ticketDetails: sanitizedTicketDetails,
+        event: event ? { ...event, _id: event._id.toString() } : { name: 'Unknown Event', date: '', time: '', posterUrl: null }
       };
     }));
     
     return NextResponse.json(bookingsWithEventDetails);
   } catch (error) {
     console.error('Error fetching bookings:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch bookings' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch bookings', details: error.message }, { status: 500 });
   }
 }

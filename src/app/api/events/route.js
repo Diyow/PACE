@@ -6,18 +6,17 @@ import { authOptions } from '@/lib/auth';
 import { uploadImageToCloudinary } from '@/lib/cloudinary';
 import { ObjectId } from 'mongodb';
 
-// POST function remains the same ...
 export async function POST(request) {
   try {
     const formData = await request.formData();
     const eventName = formData.get('eventName');
-    const date = formData.get('date'); // Expected format: YYYY-MM-DD
-    const time = formData.get('time'); // Expected format: HH:MM
+    const date = formData.get('date');
+    const time = formData.get('time');
     const description = formData.get('description');
     const posterFile = formData.get('poster');
 
     const ticketCategoriesString = formData.get('ticketCategories');
-    const seatingLayoutString = formData.get('seatingLayout');
+    const seatingLayoutString = formData.get('seatingLayout'); // This is the event's seating layout
     const promoCodesString = formData.get('promoCodes');
 
     if (!eventName || !date || !time) {
@@ -72,16 +71,17 @@ export async function POST(request) {
       }
     }
 
-    let seatingLayoutForEvent = [];
+    let seatingLayoutForEvent = []; // This is the event's overall seating structure
     if (seatingLayoutString) {
       try {
         const parsed = JSON.parse(seatingLayoutString);
         if (Array.isArray(parsed)) {
+          // This layout describes sections, their rows, and seat numbers within those rows
           seatingLayoutForEvent = parsed.map(sl => ({
             section: sl.section,
-            rows: sl.rows,
+            rows: sl.rows, // e.g., { A: [{number:1}, {number:2}], B: [{number:1}]}
             style: sl.style,
-            assignedCategoryName: sl.assignedCategoryName || null
+            assignedCategoryName: sl.assignedCategoryName || null 
           }));
         }
       } catch (e) {
@@ -89,34 +89,64 @@ export async function POST(request) {
       }
     }
     
-    // Determine initial status based on date/time
-    // This is important if an event is created for a past date/time, though usually not the case.
-    // For dynamic status filtering in GET, this stored status might be less critical
-    // but it's good practice to set it reasonably.
-    const eventDateTimeStr = `${date}T${time}:00`; // Assuming local time of server or consistent timezone
+    const eventDateTimeStr = `${date}T${time}:00`;
     const eventDateObj = new Date(eventDateTimeStr);
     const nowForStatus = new Date();
     const initialStatus = eventDateObj >= nowForStatus ? 'upcoming' : 'past';
 
-
     const newEventDocument = {
       name: eventName,
-      date: date, // Store as YYYY-MM-DD string
-      time: time, // Store as HH:MM string
+      date: date,
+      time: time,
       description: description || '',
       posterUrl: posterUrl,
       cloudinaryPublicId: cloudinaryPublicId,
-      organizerId: session.user.id, 
-      status: initialStatus, // Set initial status
+      organizerId: new ObjectId(session.user.id), // Ensure organizerId is ObjectId
+      status: initialStatus,
       createdAt: new Date(),
       updatedAt: new Date(),
       ticketCategories: ticketCategoriesForEvent, 
-      seatingLayout: seatingLayoutForEvent,       
+      seatingLayout: seatingLayoutForEvent, // Save the seating layout definition to the event
       promoCodeIds: [], 
     };
 
     const eventCreationResult = await db.collection('events').insertOne(newEventDocument);
     const createdEventId = eventCreationResult.insertedId;
+
+    // *** ADDED: Create individual seat documents in 'seats' collection ***
+    if (seatingLayoutForEvent && Array.isArray(seatingLayoutForEvent)) {
+      const seatsToCreateInCollection = [];
+      for (const sectionLayout of seatingLayoutForEvent) {
+        if (sectionLayout.rows && typeof sectionLayout.rows === 'object') {
+          for (const rowKey in sectionLayout.rows) { // e.g., rowKey is 'A', 'B'
+            if (Array.isArray(sectionLayout.rows[rowKey])) {
+              for (const seatObj of sectionLayout.rows[rowKey]) { // seatObj is like { number: 1, status: 'available' }
+                seatsToCreateInCollection.push({
+                  eventId: createdEventId,
+                  section: sectionLayout.section, // Name of the section
+                  row: rowKey, // Row identifier (e.g., "A")
+                  seatNumber: String(seatObj.number), // Ensure seatNumber is consistently string or number based on usage
+                  status: 'available', // Initial status
+                  // ticketTypeId: null, // Can be linked later if needed, or derived from assignedCategoryName
+                  createdAt: new Date(),
+                  updatedAt: new Date()
+                });
+              }
+            }
+          }
+        }
+      }
+      if (seatsToCreateInCollection.length > 0) {
+        try {
+          await db.collection('seats').insertMany(seatsToCreateInCollection, { ordered: false });
+          console.log(`Created ${seatsToCreateInCollection.length} seat documents for new event ${createdEventId}`);
+        } catch (seatCreationError) {
+          console.error(`Error creating seat documents for new event ${createdEventId}:`, seatCreationError);
+          // Optionally, you might want to roll back event creation or log this for manual intervention
+        }
+      }
+    }
+    // *** END OF ADDED LOGIC FOR SEAT CREATION ***
 
     const parsedPromoCodes = promoCodesString ? JSON.parse(promoCodesString) : [];
     const createdPromoCodeObjectIds = [];
@@ -164,28 +194,27 @@ export async function POST(request) {
   }
 }
 
-
+// GET function remains the same
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
-    const organizerId = searchParams.get('organizerId');
-    const requestedStatus = searchParams.get('status'); // 'upcoming' or 'past'
+    const organizerIdParam = searchParams.get('organizerId'); // Renamed to avoid conflict
+    const requestedStatus = searchParams.get('status');
 
     const { db } = await connectToDatabase();
     const query = {};
 
-    if (organizerId) {
-      query.organizerId = organizerId;
+    if (organizerIdParam) {
+      if (!ObjectId.isValid(organizerIdParam)) {
+         return NextResponse.json({ error: 'Invalid Organizer ID format' }, { status: 400 });
+      }
+      query.organizerId = new ObjectId(organizerIdParam);
     }
-
-    // Dynamic status filtering based on current date/time
+    
     if (requestedStatus) {
       const now = new Date();
-      
-      // Get current date and time as strings in YYYY-MM-DD and HH:MM format
-      // This assumes server's local timezone. For more robustness, handle timezones explicitly or use UTC.
       const year = now.getFullYear();
-      const month = (now.getMonth() + 1).toString().padStart(2, '0'); // JS months are 0-indexed
+      const month = (now.getMonth() + 1).toString().padStart(2, '0');
       const day = now.getDate().toString().padStart(2, '0');
       const currentDateString = `${year}-${month}-${day}`;
 
@@ -194,9 +223,6 @@ export async function GET(request) {
       const currentTimeString = `${hours}:${minutes}`;
 
       if (requestedStatus === 'upcoming') {
-        // Events are upcoming if:
-        // - Their date is greater than today's date, OR
-        // - Their date is today AND their time is greater than or equal to the current time.
         query.$or = [
           { date: { $gt: currentDateString } },
           { 
@@ -205,9 +231,6 @@ export async function GET(request) {
           }
         ];
       } else if (requestedStatus === 'past') {
-        // Events are past if:
-        // - Their date is less than today's date, OR
-        // - Their date is today AND their time is less than the current time.
         query.$or = [
           { date: { $lt: currentDateString } },
           { 
@@ -218,19 +241,27 @@ export async function GET(request) {
       }
     }
     
-    // Adjust sorting based on status
-    let sortCriteria = { date: -1, time: -1, createdAt: -1 }; // Default (good for past)
+    let sortCriteria = { date: -1, time: -1, createdAt: -1 }; 
     if (requestedStatus === 'upcoming') {
-        sortCriteria = { date: 1, time: 1, createdAt: 1 }; // Soonest upcoming first
+        sortCriteria = { date: 1, time: 1, createdAt: 1 };
     }
-
 
     const events = await db.collection('events')
       .find(query)
       .sort(sortCriteria) 
       .toArray();
 
-    return NextResponse.json(events);
+    // Convert ObjectIds to strings for client
+    const sanitizedEvents = events.map(event => ({
+        ...event,
+        _id: event._id.toString(),
+        organizerId: event.organizerId ? event.organizerId.toString() : null,
+        promoCodeIds: event.promoCodeIds ? event.promoCodeIds.map(id => id.toString()) : [],
+        // ticketCategories and seatingLayout are already in suitable format or handled by frontend
+    }));
+
+
+    return NextResponse.json(sanitizedEvents);
   } catch (error) {
     console.error('Error fetching events:', error);
     return NextResponse.json(

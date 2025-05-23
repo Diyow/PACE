@@ -1,9 +1,9 @@
-// src/app/api/events/route.js
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/mongodb'; //
+import { connectToDatabase } from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth'; //
-import { uploadImageToCloudinary } from '@/lib/cloudinary'; // Import the utility
+import { authOptions } from '@/lib/auth';
+import { uploadImageToCloudinary } from '@/lib/cloudinary';
+import { ObjectId } from 'mongodb'; // Required for creating ObjectIds for linking
 
 export async function POST(request) {
   try {
@@ -12,7 +12,12 @@ export async function POST(request) {
     const date = formData.get('date');
     const time = formData.get('time');
     const description = formData.get('description');
-    const posterFile = formData.get('poster'); // This is the File object
+    const posterFile = formData.get('poster');
+
+    // Fields sent as JSON strings from create-event/page.js
+    const ticketCategoriesString = formData.get('ticketCategories');
+    const seatingLayoutString = formData.get('seatingLayout');
+    const promoCodesString = formData.get('promoCodes');
 
     if (!eventName || !date || !time) {
       return NextResponse.json(
@@ -21,10 +26,10 @@ export async function POST(request) {
       );
     }
 
-    const session = await getServerSession(authOptions); //
-    if (!session || !session.user) {
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user || !session.user.id) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized or user ID missing from session' },
         { status: 401 }
       );
     }
@@ -32,22 +37,16 @@ export async function POST(request) {
     let posterUrl = null;
     let cloudinaryPublicId = null;
 
-    if (posterFile && posterFile.size > 0) {
+    if (posterFile && typeof posterFile.arrayBuffer === 'function' && posterFile.size > 0) {
       try {
-        // Convert the File object to a Buffer
         const fileBuffer = Buffer.from(await posterFile.arrayBuffer());
-
-        // Upload to Cloudinary
         const uploadResult = await uploadImageToCloudinary(fileBuffer, {
-          // You can add more options here, like public_id for a custom name
-          // public_id: `event_${eventName.replace(/\s+/g, '_')}_${Date.now()}`,
+          folder: 'event_posters', // Optional: organize in Cloudinary
         });
-
-        posterUrl = uploadResult.secure_url; // Use the secure URL
-        cloudinaryPublicId = uploadResult.public_id; // Store public_id if you want to manage/delete later
+        posterUrl = uploadResult.secure_url;
+        cloudinaryPublicId = uploadResult.public_id;
       } catch (uploadError) {
-        console.error('Failed to upload image to Cloudinary:', uploadError);
-        // Handle error appropriately - maybe return an error response or proceed without poster
+        console.error('Cloudinary Upload Error:', uploadError);
         return NextResponse.json(
           { error: 'Failed to upload event poster.', details: uploadError.message },
           { status: 500 }
@@ -55,29 +54,109 @@ export async function POST(request) {
       }
     }
 
-    const { db } = await connectToDatabase(); //
-    const newEvent = {
+    const { db } = await connectToDatabase();
+
+    // 1. Prepare embedded data by parsing JSON strings from FormData
+    let ticketCategoriesForEvent = [];
+    if (ticketCategoriesString) {
+      try {
+        const parsed = JSON.parse(ticketCategoriesString);
+        if (Array.isArray(parsed)) {
+          // Ensure structure {category, price}
+          ticketCategoriesForEvent = parsed.map(tc => ({
+            category: tc.category, // Assuming frontend sends {category, price}
+            price: parseFloat(tc.price)
+          }));
+        } else {
+          console.warn("ticketCategories was not an array string:", ticketCategoriesString);
+        }
+      } catch (e) {
+        console.error("Error parsing ticketCategories for create:", e);
+        return NextResponse.json({ error: 'Invalid format for ticketCategories. Must be a JSON array string.' }, { status: 400 });
+      }
+    }
+
+    let seatingLayoutForEvent = [];
+    if (seatingLayoutString) {
+      try {
+        const parsed = JSON.parse(seatingLayoutString);
+        if (Array.isArray(parsed)) {
+          // Ensure structure {section, rows, style, assignedCategoryName}
+          seatingLayoutForEvent = parsed.map(sl => ({
+            section: sl.section,
+            rows: sl.rows,
+            style: sl.style,
+            assignedCategoryName: sl.assignedCategoryName || null
+          }));
+        } else {
+          console.warn("seatingLayout was not an array string:", seatingLayoutString);
+        }
+      } catch (e) {
+        console.error("Error parsing seatingLayout for create:", e);
+        return NextResponse.json({ error: 'Invalid format for seatingLayout. Must be a JSON array string.' }, { status: 400 });
+      }
+    }
+
+    // 2. Create the main event document with embedded data
+    const newEventDocument = {
       name: eventName,
       date: date,
       time: time,
       description: description || '',
-      posterUrl: posterUrl, // URL from Cloudinary
-      cloudinaryPublicId: cloudinaryPublicId, // Optional: Store for later management
-      organizerId: session.user.id,
+      posterUrl: posterUrl,
+      cloudinaryPublicId: cloudinaryPublicId,
+      organizerId: session.user.id, // Use the string ID from the session
       status: 'upcoming',
       createdAt: new Date(),
       updatedAt: new Date(),
-      seatingLayout: formData.get('seatingLayout') ? JSON.parse(formData.get('seatingLayout')) : [],
-      ticketCategories: formData.get('ticketCategories') ? JSON.parse(formData.get('ticketCategories')) : [],
+      ticketCategories: ticketCategoriesForEvent, // Embed directly
+      seatingLayout: seatingLayoutForEvent,       // Embed directly
+      promoCodeIds: [], // To store ObjectIds of created promo codes
     };
 
-    const result = await db.collection('events').insertOne(newEvent);
+    const eventCreationResult = await db.collection('events').insertOne(newEventDocument);
+    const createdEventId = eventCreationResult.insertedId;
+
+    // 3. Create promo codes in their separate collection and link them
+    const parsedPromoCodes = promoCodesString ? JSON.parse(promoCodesString) : [];
+    const createdPromoCodeObjectIds = [];
+
+    if (Array.isArray(parsedPromoCodes) && parsedPromoCodes.length > 0) {
+      for (const pc of parsedPromoCodes) {
+        const promoCodeDoc = {
+          eventId: createdEventId, // Link to the new event using its ObjectId
+          code: (pc.code || '').toUpperCase(),
+          discountType: pc.discountType,
+          discountValue: parseFloat(pc.discountValue),
+          maxUses: pc.maxUses ? parseInt(pc.maxUses) : null,
+          currentUses: 0,
+          expiryDate: pc.expiryDate ? new Date(pc.expiryDate) : null,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        if (promoCodeDoc.code) { // Ensure code is not empty
+          const pcResult = await db.collection('promoCodes').insertOne(promoCodeDoc);
+          createdPromoCodeObjectIds.push(pcResult.insertedId); // Store ObjectId
+        }
+      }
+      // Update the event document with the IDs of the created promo codes
+      if (createdPromoCodeObjectIds.length > 0) {
+        await db.collection('events').updateOne(
+          { _id: createdEventId },
+          { $set: { promoCodeIds: createdPromoCodeObjectIds, updatedAt: new Date() } }
+        );
+      }
+    }
+    
+    // Fetch the fully assembled event to return
+    const finalEvent = await db.collection('events').findOne({ _id: createdEventId });
 
     return NextResponse.json({
       message: 'Event created successfully',
-      eventId: result.insertedId,
-      event: newEvent, // Return the created event including the posterUrl
-    });
+      eventId: createdEventId,
+      event: finalEvent, // Contains embedded ticketCategories, seatingLayout, and promoCodeIds
+    }, { status: 201 });
+
   } catch (error) {
     console.error('Error creating event:', error);
     return NextResponse.json(
@@ -87,17 +166,17 @@ export async function POST(request) {
   }
 }
 
-// GET function remains the same
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
     const organizerId = searchParams.get('organizerId');
-    const status = searchParams.get('status');
+    const status = searchParams.get('status'); // e.g., 'upcoming', 'past'
 
-    const { db } = await connectToDatabase(); //
+    const { db } = await connectToDatabase();
 
     const query = {};
     if (organizerId) {
+      // Assuming organizerId in the 'events' collection is stored as the string user ID from the session
       query.organizerId = organizerId;
     }
     if (status) {
@@ -106,14 +185,14 @@ export async function GET(request) {
 
     const events = await db.collection('events')
       .find(query)
-      .sort({ createdAt: -1 })
+      .sort({ date: -1, time: -1, createdAt: -1 }) // Sort by event date, then time, then creation
       .toArray();
 
     return NextResponse.json(events);
   } catch (error) {
     console.error('Error fetching events:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch events' },
+      { error: 'Failed to fetch events', details: error.message },
       { status: 500 }
     );
   }

@@ -1,6 +1,6 @@
 // src/app/organizer/create-event/page.js
 'use client';
-import React, { useState, useCallback } from 'react'; // Added useCallback
+import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeftIcon,
@@ -20,14 +20,11 @@ import PromotionalCodes from '@/components/organizer/PromotionalCodes';
 import { toast } from 'react-hot-toast';
 import { initialSeatingLayout as predefinedSeatingLayout } from '@/app/seat-selection/seatingData';
 
-// Helper to generate a simple temporary ID for items added on the client-side before saving
 const generateTempId = () => `temp_${Math.random().toString(36).substr(2, 9)}`;
 
 const CreateEventPage = () => {
   const router = useRouter();
 
-  // == Combined State from edit-event page ==
-  // Basic Info State
   const [eventData, setEventData] = useState({
     eventName: '',
     date: '',
@@ -37,22 +34,19 @@ const CreateEventPage = () => {
   const [eventPoster, setEventPoster] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
-  // Ticket Types State
   const [ticketTypes, setTicketTypes] = useState([]);
   const [newTicketType, setNewTicketType] = useState({ categoryName: '', price: '' });
-  const [editingTicketType, setEditingTicketType] = useState(null); // Stores the tempId or actualId if we were editing
+  const [editingTicketType, setEditingTicketType] = useState(null);
 
-  // Seating Arrangement State
   const [sectionTicketTypeMap, setSectionTicketTypeMap] = useState(() => {
     const initialMap = {};
     predefinedSeatingLayout.forEach(section => {
-      initialMap[section.section] = ''; // No default assignment
+      initialMap[section.section] = ''; 
     });
     return initialMap;
   });
   const [selectedVisualSection, setSelectedVisualSection] = useState(null);
 
-  // Promo Codes State
   const [promoCodes, setPromoCodes] = useState([]);
   const [newPromoCode, setNewPromoCode] = useState({
     code: '',
@@ -61,10 +55,9 @@ const CreateEventPage = () => {
     maxUses: '',
     expiryDate: '',
   });
-  const [editingPromoCode, setEditingPromoCode] = useState(null); // Stores tempId or actualId
+  const [editingPromoCode, setEditingPromoCode] = useState(null);
 
-  // General State
-  const [loading, setLoading] = useState(false); // Renamed from isSavingAll
+  const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('basic');
 
   const DEFAULT_TICKET_CATEGORY_NAME = "Regular";
@@ -79,7 +72,6 @@ const CreateEventPage = () => {
     day: 'numeric'
   }) : '';
 
-  // == Handlers adapted for local state management ==
   const handleBasicInfoInputChange = (event) => {
     const { name, value } = event.target;
     setEventData(prev => ({ ...prev, [name]: value }));
@@ -99,7 +91,6 @@ const CreateEventPage = () => {
     setPreviewUrl(null);
   };
 
-  // --- Ticket Types Handlers (Local State Only) ---
   const handleNewTicketTypeChange = (e) => {
     const { name, value } = e.target;
     setNewTicketType(prev => ({ ...prev, [name]: value }));
@@ -117,13 +108,17 @@ const CreateEventPage = () => {
     }
 
     if (editingTicketType) {
-      setTicketTypes(ticketTypes.map(tt => 
+      setTicketTypes(ticketTypes.map(tt =>
         (tt.id || tt._id) === (editingTicketType.id || editingTicketType._id)
-          ? { ...editingTicketType, categoryName: newTicketType.categoryName, price: price } 
+          ? { ...editingTicketType, categoryName: newTicketType.categoryName, price: price }
           : tt
       ));
       toast.success("Ticket type updated locally.");
     } else {
+      if (ticketTypes.some(tt => tt.categoryName.toLowerCase() === newTicketType.categoryName.toLowerCase())) {
+        toast.error(`Ticket type "${newTicketType.categoryName}" already exists.`);
+        return;
+      }
       setTicketTypes([...ticketTypes, { ...newTicketType, id: generateTempId(), price: price }]);
       toast.success("Ticket type added locally.");
     }
@@ -137,34 +132,40 @@ const CreateEventPage = () => {
   };
 
   const handleDeleteTicketTypeLocal = (ticketTypeIdToDelete) => {
+    const typeToDelete = ticketTypes.find(tt => (tt.id || tt._id) === ticketTypeIdToDelete);
+    if (!typeToDelete) return;
+
     setTicketTypes(prev => prev.filter(tt => (tt.id || tt._id) !== ticketTypeIdToDelete));
+    
     setSectionTicketTypeMap(prevMap => {
       const newMap = { ...prevMap };
       for (const sectionName in newMap) {
-        if (newMap[sectionName] === ticketTypeIdToDelete) {
-          newMap[sectionName] = '';
+        if (newMap[sectionName] === typeToDelete.categoryName) {
+          newMap[sectionName] = ''; 
         }
       }
       return newMap;
     });
-    toast.success("Ticket type removed locally.");
+    toast.success(`Ticket type "${typeToDelete.categoryName}" removed locally. Unassigned sections will use the default type.`);
+    if (editingTicketType && (editingTicketType.id || editingTicketType._id) === ticketTypeIdToDelete) {
+        handleCancelEditTicketTypeLocal();
+    }
   };
-  
+
   const handleCancelEditTicketTypeLocal = () => {
     setEditingTicketType(null);
     setNewTicketType({ categoryName: '', price: '' });
   };
 
-  // --- Seating Arrangement Handlers (Local State Only) ---
   const handleVisualSectionSelect = (sectionName) => setSelectedVisualSection(sectionName);
-  const assignTicketTypeToSection = (ticketTypeId) => {
+  
+  const assignTicketTypeToSection = (categoryName) => {
     if (selectedVisualSection) {
-      setSectionTicketTypeMap(prev => ({ ...prev, [selectedVisualSection]: ticketTypeId }));
+      setSectionTicketTypeMap(prev => ({ ...prev, [selectedVisualSection]: categoryName }));
     }
   };
   const handleDoneWithSection = () => setSelectedVisualSection(null);
 
-  // --- Promo Codes Handlers (Local State Only) ---
   const handleNewPromoCodeChange = (e) => {
     const { name, value } = e.target;
     setNewPromoCode(prev => ({ ...prev, [name]: name === 'code' ? value.toUpperCase() : value }));
@@ -175,7 +176,6 @@ const CreateEventPage = () => {
       toast.error("Code and discount value are required.");
       return;
     }
-    // Further validations as in edit-event
     const discountValue = parseFloat(newPromoCode.discountValue);
      if (isNaN(discountValue) || discountValue <= 0) {
         toast.error("Please enter a valid positive discount value.");
@@ -222,7 +222,6 @@ const CreateEventPage = () => {
     setNewPromoCode({ code: '', discountType: 'percentage', discountValue: '', maxUses: '', expiryDate: '' });
   };
 
-  // --- Main Submit Handler ---
   const handleCreateAndPublishEvent = async () => {
     if (!eventData.eventName || !eventData.date || !eventData.time) {
       toast.error("Event name, date, and time are required.");
@@ -230,7 +229,6 @@ const CreateEventPage = () => {
     }
     setLoading(true);
 
-    // Prepare full payload for the backend
     const formData = new FormData();
     formData.append('eventName', eventData.eventName);
     formData.append('date', eventData.date);
@@ -240,57 +238,56 @@ const CreateEventPage = () => {
       formData.append('poster', eventPoster);
     }
 
-    // Add ticket types, seating, and promo codes
-    // The backend /api/events POST route MUST be updated to handle these
-    const anitizedTicketTypes = ticketTypes.map(({ id, _id, ...rest }) => rest); // Remove temporary client-side IDs
-    formData.append('ticketCategories', JSON.stringify(anitizedTicketTypes.map(tt => ({ category: tt.categoryName, price: tt.price }))));
-
-
-    let defaultTicketTypeForSeating = null;
-    if(ticketTypes.length > 0){
-        const regularOrFirstType = ticketTypes.find(tt => tt.categoryName === DEFAULT_TICKET_CATEGORY_NAME) || ticketTypes[0];
-        if(regularOrFirstType) defaultTicketTypeForSeating = regularOrFirstType.id || regularOrFirstType._id; // Use temp ID
-    } else {
-        // If no ticket types defined by user, create a default one conceptually for seating assignments
-        // The backend will need to create this default ticket type if it receives seating assignments
-        // that refer to a non-existent (or a "default placeholder") ticket type ID.
-        // For now, we'll assign a placeholder that the backend can interpret.
-         formData.append('ticketCategories', JSON.stringify([{ category: DEFAULT_TICKET_CATEGORY_NAME, price: parseFloat(DEFAULT_TICKET_PRICE) }]));
-    }
-
-
+    // --- Start of refined logic ---
+    let isDefaultCategoryReferencedBySeating = false;
     const finalSeatingLayoutAssignments = predefinedSeatingLayout.map(section => {
-      let assignedCategory = sectionTicketTypeMap[section.section] || '';
-      // If assignedCategory is a temporary ID, the backend will need to map it to the actual ID after creating ticket types.
-      // Or, we assign by categoryName if IDs are not stable yet.
-      // For simplicity, if a default was made, and a section is unassigned, it might get the default.
-      // This part needs careful backend coordination.
-       if (!assignedCategory && ticketTypes.length === 0) { // If creating the default type
-           assignedCategory = DEFAULT_TICKET_CATEGORY_NAME; // Assign by name, backend resolves to ID
-       } else if (!assignedCategory && ticketTypes.length > 0) {
-           const firstType = ticketTypes[0];
-           assignedCategory = firstType.categoryName; // Assign by name
-       } else if (assignedCategory) { // If it's an ID (temp or real) find its name
-            const type = ticketTypes.find(t => (t.id || t._id) === assignedCategory);
-            if(type) assignedCategory = type.categoryName;
-            else assignedCategory = ''; // Fallback if ID not found
-       }
+      const userAssignedCategoryName = sectionTicketTypeMap[section.section]; 
 
+      let finalAssignedCategoryName;
+      if (userAssignedCategoryName && userAssignedCategoryName !== '') {
+        finalAssignedCategoryName = userAssignedCategoryName;
+      } else {
+        finalAssignedCategoryName = DEFAULT_TICKET_CATEGORY_NAME;
+        isDefaultCategoryReferencedBySeating = true; // Mark that the default is needed
+      }
 
       return {
         section: section.section,
-        rows: section.rows, // Sending full structure for now
+        rows: section.rows,
         style: section.style,
-        assignedCategoryName: assignedCategory // Send category name; backend will map to ID
+        assignedCategoryName: finalAssignedCategoryName
       };
     });
     formData.append('seatingLayout', JSON.stringify(finalSeatingLayoutAssignments));
+
+    let finalTicketCategoriesForPayload;
+    const userDefinedTicketTypes = ticketTypes.map(tt => ({
+      category: tt.categoryName,
+      price: parseFloat(tt.price)
+    }));
+
+    if (userDefinedTicketTypes.length === 0) {
+      // Case 1: No user-defined types. All sections use default. Payload is just default.
+      finalTicketCategoriesForPayload = [{ category: DEFAULT_TICKET_CATEGORY_NAME, price: parseFloat(DEFAULT_TICKET_PRICE) }];
+    } else {
+      // Case 2: User defined some types.
+      finalTicketCategoriesForPayload = [...userDefinedTicketTypes];
+      const defaultIsDefinedByUser = userDefinedTicketTypes.some(
+        tt => tt.category.toLowerCase() === DEFAULT_TICKET_CATEGORY_NAME.toLowerCase()
+      );
+      // Add default type to payload ONLY if it's referenced by seating AND not already defined by user.
+      if (isDefaultCategoryReferencedBySeating && !defaultIsDefinedByUser) {
+        finalTicketCategoriesForPayload.push({ category: DEFAULT_TICKET_CATEGORY_NAME, price: parseFloat(DEFAULT_TICKET_PRICE) });
+      }
+    }
+    formData.append('ticketCategories', JSON.stringify(finalTicketCategoriesForPayload));
+    // --- End of refined logic ---
 
     const sanitizedPromoCodes = promoCodes.map(({ id, _id, ...rest }) => rest);
     formData.append('promoCodes', JSON.stringify(sanitizedPromoCodes));
 
     try {
-      const response = await fetch('/api/events', { // Or a new route like /api/events/full-create
+      const response = await fetch('/api/events', {
         method: 'POST',
         body: formData,
       });
@@ -371,18 +368,18 @@ const CreateEventPage = () => {
                     newTicketType={newTicketType}
                     editingTicketType={editingTicketType}
                     onNewTicketTypeChange={handleNewTicketTypeChange}
-                    onAddOrUpdateTicketType={handleAddOrUpdateTicketTypeLocal} // Use local handler
-                    onEditTicketType={handleEditTicketTypeLocal}             // Use local handler
-                    onDeleteTicketType={handleDeleteTicketTypeLocal}           // Use local handler
-                    onCancelEditTicketType={handleCancelEditTicketTypeLocal} // Use local handler
-                    isLoading={loading} // General loading state
+                    onAddOrUpdateTicketType={handleAddOrUpdateTicketTypeLocal}
+                    onEditTicketType={handleEditTicketTypeLocal}
+                    onDeleteTicketType={handleDeleteTicketTypeLocal}
+                    onCancelEditTicketType={handleCancelEditTicketTypeLocal}
+                    isLoading={loading}
                     inputClass={inputClass}
                     labelClass={labelClass}
                   />
                 )}
                 {activeTab === 'seatingArrangement' && (
                   <SeatingArrangement
-                    ticketTypes={ticketTypes} // Pass locally managed ticket types
+                    ticketTypes={ticketTypes.length > 0 ? ticketTypes : [{id: 'default', categoryName: DEFAULT_TICKET_CATEGORY_NAME, price: DEFAULT_TICKET_PRICE}]}
                     sectionTicketTypeMap={sectionTicketTypeMap}
                     selectedVisualSection={selectedVisualSection}
                     onVisualSectionSelect={handleVisualSectionSelect}
@@ -398,10 +395,10 @@ const CreateEventPage = () => {
                     newPromoCode={newPromoCode}
                     editingPromoCode={editingPromoCode}
                     onNewPromoCodeChange={handleNewPromoCodeChange}
-                    onAddOrUpdatePromoCode={handleAddOrUpdatePromoCodeLocal} // Local
-                    onEditPromoCode={handleEditPromoCodeLocal}             // Local
-                    onDeletePromoCode={handleDeletePromoCodeLocal}           // Local
-                    onCancelEditPromoCode={handleCancelEditPromoCodeLocal} // Local
+                    onAddOrUpdatePromoCode={handleAddOrUpdatePromoCodeLocal}
+                    onEditPromoCode={handleEditPromoCodeLocal}
+                    onDeletePromoCode={handleDeletePromoCodeLocal}
+                    onCancelEditPromoCode={handleCancelEditPromoCodeLocal}
                     isLoading={loading}
                     inputClass={inputClass}
                     labelClass={labelClass}
@@ -413,7 +410,6 @@ const CreateEventPage = () => {
             {/* Event Preview & Action Section */}
             <div className="lg:col-span-2">
               <div className="sticky top-8 space-y-6">
-                {/* Event Preview */}
                 <div className="bg-white rounded-xl shadow-md p-6 overflow-hidden">
                   <div className="flex items-center mb-4">
                     <EyeIcon className="h-6 w-6 text-sky-500 mr-2" />
@@ -443,7 +439,6 @@ const CreateEventPage = () => {
                     </div>
                   </div>
                 </div>
-                {/* Publish Button */}
                 <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
                     <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
                         <DocumentTextIcon className="h-5 w-5 mr-2 text-sky-600" />
@@ -456,7 +451,7 @@ const CreateEventPage = () => {
                         type="button"
                         onClick={handleCreateAndPublishEvent}
                         disabled={loading}
-                        className={`w-full inline-flex justify-center items-center py-3 px-6 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 
+                        className={`w-full inline-flex justify-center items-center py-3 px-6 border border-transparent shadow-sm text-base font-medium rounded-md text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500
                                     ${loading ? 'opacity-50 cursor-not-allowed' : 'transform transition hover:-translate-y-0.5'}`}
                     >
                         {loading ? (

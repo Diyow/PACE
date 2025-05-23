@@ -5,10 +5,12 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 
 // UPDATE - Update ticket and seating information for an event
-export async function PUT(request, { params }) {
+export async function PUT(request, context) { // Using context as the second argument
   try {
-    const eventId = params.eventId;
-    
+    // Await context.params because the console log shows it's a Promise
+    const paramsObject = await context.params; 
+    const eventId = paramsObject.eventId; // Access eventId from the resolved object
+
     if (!eventId || !ObjectId.isValid(eventId)) {
       return NextResponse.json(
         { error: 'Invalid event ID' },
@@ -16,7 +18,6 @@ export async function PUT(request, { params }) {
       );
     }
     
-    // Get the current user session to verify ownership
     const session = await getServerSession(authOptions);
     if (!session || !session.user) {
       return NextResponse.json(
@@ -27,7 +28,6 @@ export async function PUT(request, { params }) {
     
     const { db } = await connectToDatabase();
     
-    // Check if the event exists and belongs to the current user
     const existingEvent = await db.collection('events').findOne({
       _id: new ObjectId(eventId)
     });
@@ -39,19 +39,20 @@ export async function PUT(request, { params }) {
       );
     }
     
-    // Check if the user is the organizer of the event
-    if (existingEvent.organizerId !== session.user.id) {
+    const organizerIdAsString = typeof existingEvent.organizerId === 'string' 
+      ? existingEvent.organizerId 
+      : existingEvent.organizerId.toString();
+
+    if (session.user.role !== 'admin' && organizerIdAsString !== session.user.id) {
       return NextResponse.json(
         { error: 'You do not have permission to update this event' },
         { status: 403 }
       );
     }
     
-    // Parse the request body
     const data = await request.json();
     const { seatingLayout, ticketCategories } = data;
     
-    // Update only the ticket and seating information
     await db.collection('events').updateOne(
       { _id: new ObjectId(eventId) },
       { $set: {
@@ -66,8 +67,12 @@ export async function PUT(request, { params }) {
     });
   } catch (error) {
     console.error('Error updating ticket information:', error);
+    let errorMessage = 'Failed to update ticket information';
+    if (error instanceof Error) {
+        errorMessage += `: ${error.message}`;
+    }
     return NextResponse.json(
-      { error: 'Failed to update ticket information' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

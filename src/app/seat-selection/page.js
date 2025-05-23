@@ -1,113 +1,267 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { initialSeatingLayout } from './seatingData';
+import { toast } from 'react-hot-toast'; // Assuming you have react-hot-toast installed
+
+// Removed: import { initialSeatingLayout } from './seatingData'; 
+// We will fetch the layout or use the one from the event details.
 
 const SeatSelectionPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const ticketPrice = parseFloat(searchParams.get('ticketPrice')) || 0;
+  
   const eventId = searchParams.get('eventId') || '';
   const eventName = searchParams.get('eventName') || 'Event';
-  const [isLoading, setIsLoading] = useState(false);
+  // pricePerSeat from query is a fallback/representative, actual prices come from ticketCategories
+  const representativePricePerSeat = parseFloat(searchParams.get('pricePerSeat')) || 0; 
 
-  const [seatingLayout, setSeatingLayout] = useState(initialSeatingLayout);
-  const [selectedSeats, setSelectedSeats] = useState([]);
+  const [isLoading, setIsLoading] = useState(true); // Combined loading state
+
+  // State for data fetched from API
+  const [apiSeatingLayout, setApiSeatingLayout] = useState([]); // Layout from event.seatingLayout
+  const [seatStatuses, setSeatStatuses] = useState({}); // Status from /api/seats
+  const [ticketCategories, setTicketCategories] = useState([]); // From event.ticketCategories
+
+  // State for user interaction
+  const [selectedSeats, setSelectedSeats] = useState([]); // Array of { section, row, seat, price, category }
   const [totalPrice, setTotalPrice] = useState(0);
-  const [activeSection, setActiveSection] = useState(null);
+  const [activeSectionName, setActiveSectionName] = useState(null); // To highlight or focus on a section if needed
+
+  const [error, setError] = useState(null);
+
+
+  const fetchEventAndSeatData = useCallback(async () => {
+    if (!eventId) {
+      setError("Event ID is missing.");
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    setError(null); // Clear previous errors
+    try {
+      // 1. Fetch event details (includes seatingLayout template and ticketCategories)
+      const eventRes = await fetch(`/api/events/${eventId}`);
+      if (!eventRes.ok) throw new Error(`Failed to fetch event details: ${eventRes.statusText} (status: ${eventRes.status})`);
+      const eventData = await eventRes.json();
+
+      if (!eventData.seatingLayout || eventData.seatingLayout.length === 0) {
+        console.warn("No seating layout defined for this event in the database.");
+        setError("Seating layout not available for this event.");
+        setApiSeatingLayout([]); // Ensure it's an empty array
+      } else {
+        setApiSeatingLayout(eventData.seatingLayout);
+      }
+
+      setTicketCategories(eventData.ticketCategories || []);
+
+      // 2. Fetch seat statuses (availability)
+      const seatsStatusRes = await fetch(`/api/seats?eventId=${eventId}`);
+      if (!seatsStatusRes.ok) throw new Error(`Failed to fetch seat statuses: ${seatsStatusRes.statusText} (status: ${seatsStatusRes.status})`);
+      const seatsStatusData = await seatsStatusRes.json(); 
+
+      const statuses = {};
+      seatsStatusData.forEach(seat => {
+        // Key should uniquely identify a seat within its section and row.
+        // This assumes `seat` object from `/api/seats` has `section`, `row`, and `seatNumber` or similar.
+        // Adjust if your API returns a different structure (e.g., seat._id and you map it differently).
+        const sectionKey = seat.section || seat.sectionName || "UnknownSection";
+        const rowKey = seat.row || seat.rowLetter || "UnknownRow";
+        const numberKey = seat.seatNumber || seat.number || "UnknownNumber";
+        const key = `${sectionKey}-${rowKey}-${numberKey}`;
+        statuses[key] = seat.status;
+      });
+      setSeatStatuses(statuses);
+
+    } catch (err) {
+      console.error("Error fetching data for seat selection:", err);
+      setError(err.message || "Could not load seat data.");
+      setApiSeatingLayout([]); 
+    } finally {
+      setIsLoading(false);
+    }
+  }, [eventId]);
 
   useEffect(() => {
-    setTotalPrice(selectedSeats.length * ticketPrice);
-  }, [selectedSeats, ticketPrice]);
+    fetchEventAndSeatData();
+  }, [fetchEventAndSeatData]);
 
-  const handleSeatSelect = (sectionIndex, rowLetter, seatNumber) => {
-    setSeatingLayout(prevLayout => {
-      const newLayout = prevLayout.map((sectionData, idx) => {
-        if (idx === sectionIndex) {
-          return {
-            ...sectionData,
-            rows: Object.entries(sectionData.rows).reduce((acc, [row, seats]) => {
-              if (row === rowLetter) {
-                acc[row] = seats.map(seat =>
-                  seat.number === seatNumber
-                    ? { ...seat, status: seat.status === 'available' ? 'selected' : 'available' }
-                    : seat
-                );
-              } else {
-                acc[row] = seats;
-              }
-              return acc;
-            }, {}),
-          };
-        }
-        return sectionData;
-      });
-      return newLayout;
-    });
+  // Calculate total price based on selected seats
+  useEffect(() => {
+    const newTotal = selectedSeats.reduce((sum, seat) => sum + seat.price, 0);
+    setTotalPrice(newTotal);
+  }, [selectedSeats]);
 
-    const currentSectionData = seatingLayout[sectionIndex];
+  const getSeatPrice = (sectionName) => {
+    // Find the section configuration in the fetched API layout
+    const sectionConfig = apiSeatingLayout.find(s => s.section === sectionName);
+    if (sectionConfig && sectionConfig.assignedCategoryName) {
+        const category = ticketCategories.find(tc => tc.category === sectionConfig.assignedCategoryName);
+        return category ? parseFloat(category.price) : (ticketCategories[0] ? parseFloat(ticketCategories[0].price) : representativePricePerSeat);
+    }
+    // Fallback to the first ticket category's price or the representative price from query
+    return ticketCategories[0] ? parseFloat(ticketCategories[0].price) : representativePricePerSeat;
+  };
+
+  const handleSeatSelect = (sectionName, rowLetter, seatNumber) => {
+    const seatKey = `${sectionName}-${rowLetter}-${seatNumber}`;
+    const currentStatusFromAPI = seatStatuses[seatKey] || 'available';
+
+    if (currentStatusFromAPI === 'occupied' || currentStatusFromAPI === 'reserved') {
+        toast.error("This seat is not available.");
+        return;
+    }
+
+    const price = getSeatPrice(sectionName);
+    const sectionConfig = apiSeatingLayout.find(s => s.section === sectionName);
+    const category = sectionConfig?.assignedCategoryName || (ticketCategories[0]?.category || 'Standard');
+
+    const seatIdentifier = { section: sectionName, row: rowLetter, seat: seatNumber };
     const isSelected = selectedSeats.some(
-      seat => seat.section === currentSectionData.section && seat.row === rowLetter && seat.seat === seatNumber
+      s => s.section === sectionName && s.row === rowLetter && s.seat === seatNumber
     );
 
     if (isSelected) {
-      setSelectedSeats(
-        selectedSeats.filter(
-          seat => !(seat.section === currentSectionData.section && seat.row === rowLetter && seat.seat === seatNumber)
+      setSelectedSeats(prevSeats =>
+        prevSeats.filter(
+          s => !(s.section === sectionName && s.row === rowLetter && s.seat === seatNumber)
         )
       );
     } else {
-      setSelectedSeats([...selectedSeats, { section: currentSectionData.section, row: rowLetter, seat: seatNumber }]);
+      // Add new seat with its details
+      setSelectedSeats(prevSeats => [...prevSeats, { ...seatIdentifier, price, category }]);
     }
   };
 
-  const handleOrder = () => {
-    setIsLoading(true);
-    setTimeout(() => {
-      router.push(`/ticket-booking?selectedSeats=${JSON.stringify(selectedSeats)}&eventId=${eventId}`);
-    }, 800);
+  const handleConfirmAndProceed = () => {
+    if (selectedSeats.length === 0) {
+      toast.error("Please select at least one seat.");
+      return;
+    }
+    setIsLoading(true); // Show loading for navigation feedback
+    
+    // Prepare data to pass back to the event detail page
+    const selectedSeatsData = selectedSeats.map(s => ({ 
+        section: s.section, 
+        row: s.row, 
+        seat: s.seat, 
+        category: s.category, 
+        price: s.price 
+    }));
+    
+    router.push(`/events/${eventId}?selectedSeatsData=${encodeURIComponent(JSON.stringify(selectedSeatsData))}&totalCost=${totalPrice.toFixed(2)}`);
   };
 
-  const handleSectionClick = (sectionIndex) => {
-    setActiveSection(activeSection === sectionIndex ? null : sectionIndex);
+
+  const handleSectionClick = (sectionName) => { // Changed from index to name for clarity
+    setActiveSectionName(activeSectionName === sectionName ? null : sectionName);
   };
 
-  // Helper to render seats for a given section
-  const renderSeatsForSection = (sectionData, sectionIndex) => {
-    if (!sectionData || !sectionData.rows) return null;
+  // Helper to render seats for a given section from API data
+  const renderSeatsForSection = (sectionData) => { // sectionData is from apiSeatingLayout
+    if (!sectionData || typeof sectionData.rows !== 'object' || sectionData.rows === null) {
+        return <div className="p-2 text-xs text-center text-red-500">Seat layout for this section is unavailable or misconfigured.</div>;
+    }
+    const sectionName = sectionData.section;
+
     return (
       <div className="flex flex-col items-center w-full">
-        {Object.entries(sectionData.rows).map(([rowLetter, seats]) => (
-          <div
-            key={rowLetter}
-            className="flex gap-1 my-1 items-center justify-start flex-nowrap"
-          >
-            <span className="w-6 h-6 flex items-center justify-center text-[11px] leading-tight font-medium bg-slate-200 text-slate-700 rounded-sm mr-1">{rowLetter}</span>
-            {seats.map(seat => (
-              <button
-                key={`${rowLetter}-${seat.number}`}
-                className={`text-[11px] leading-tight min-w-[1.3rem] h-[1.3rem] flex items-center justify-center rounded border transition-all duration-150 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-sky-400
-                  ${seat.status === 'available'
-                    ? 'bg-sky-100 text-sky-800 hover:bg-sky-200 border-sky-300 cursor-pointer'
-                    : seat.status === 'unavailable'
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400'
-                    : 'bg-sky-500 text-white border-sky-600 shadow-md'}`}
-                onClick={(e) => {
-                  e.stopPropagation(); // Prevent section click when seat is clicked
-                  handleSeatSelect(sectionIndex, rowLetter, seat.number);
-                }}
-                disabled={seat.status === 'unavailable'}
-                title={`${sectionData.section} - Row ${rowLetter}, Seat ${seat.number}`}
-              >
-                {seat.number}
-              </button>
-            ))}
-          </div>
-        ))}
+        {Object.entries(sectionData.rows).map(([rowLetter, seatsInRowArray]) => {
+           if (!Array.isArray(seatsInRowArray)) {
+            return null; 
+          }
+          return (
+            <div
+              key={rowLetter}
+              className="flex gap-1 my-1 items-center justify-start flex-nowrap"
+            >
+              <span className="w-6 h-6 flex items-center justify-center text-[11px] leading-tight font-medium bg-slate-200 text-slate-700 rounded-sm mr-1">{rowLetter}</span>
+              {seatsInRowArray.map(seatObj => {
+                const seatNumber = seatObj.number;
+                const seatKey = `${sectionName}-${rowLetter}-${seatNumber}`;
+                const apiStatus = seatStatuses[seatKey]; // Status from /api/seats
+
+                const isCurrentlySelected = selectedSeats.some(
+                  s => s.section === sectionName && s.row === rowLetter && s.seat === seatNumber
+                );
+
+                let seatDisplayStatus = 'available'; // Default display
+                if (apiStatus === 'occupied' || apiStatus === 'reserved') {
+                  seatDisplayStatus = 'unavailable';
+                }
+                if (isCurrentlySelected) {
+                  seatDisplayStatus = 'selected';
+                }
+
+                return (
+                  <button
+                    key={`${rowLetter}-${seatNumber}`}
+                    className={`text-[11px] leading-tight min-w-[1.3rem] h-[1.3rem] flex items-center justify-center rounded border transition-all duration-150 transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-sky-400
+                      ${seatDisplayStatus === 'available'
+                        ? 'bg-sky-100 text-sky-800 hover:bg-sky-200 border-sky-300 cursor-pointer'
+                        : seatDisplayStatus === 'unavailable'
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed border-gray-400'
+                        : 'bg-sky-500 text-white border-sky-600 shadow-md' // selected
+                      }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (seatDisplayStatus !== 'unavailable') {
+                           handleSeatSelect(sectionName, rowLetter, seatNumber);
+                      } else {
+                          toast.error("This seat is already taken.");
+                      }
+                    }}
+                    disabled={apiStatus === 'occupied' || apiStatus === 'reserved'}
+                    title={`${sectionName} - Row ${rowLetter}, Seat ${seatNumber}`}
+                  >
+                    {seatNumber}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     );
   };
+  
+  if (isLoading && !error && apiSeatingLayout.length === 0) { // Show initial loading screen
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-sky-100 to-blue-100 p-4">
+            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-sky-500 mb-4"></div>
+            <p className="text-sky-700 text-xl">Loading Seat Map for {eventName}...</p>
+        </div>
+    );
+  }
+
+  if (error) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-red-50 p-4">
+            {/* <InformationCircleIcon className="h-16 w-16 text-red-500 mb-4" /> You'd need to import this icon */}
+            <h2 className="text-2xl font-semibold text-red-700 mb-2">Error Loading Seats</h2>
+            <p className="text-red-600 text-center mb-6">{error}</p>
+            <button
+                onClick={() => router.back()} // Or fetchEventAndSeatData for a retry
+                className="px-6 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors flex items-center"
+            >
+                Go Back
+            </button>
+        </div>
+    );
+  }
+   if (!isLoading && apiSeatingLayout.length === 0 && !error) {
+    return (
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-100 p-4">
+            <p className="text-xl text-gray-700">Seating information is currently not available for this event.</p>
+             <button
+                onClick={() => router.back()}
+                className="mt-4 px-6 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors flex items-center"
+            >
+                Go Back
+            </button>
+        </div>
+    );
+  }
 
 
   return (
@@ -134,8 +288,14 @@ const SeatSelectionPage = () => {
           </span>
         </div>
         <div className="text-right">
-          <span className="text-sm text-gray-600">Price per seat:</span>
-          <span className="ml-1.5 font-semibold text-sky-700 text-lg">${ticketPrice.toFixed(2)}</span>
+          {/* Price display can be more dynamic if prices vary by section */}
+          {ticketCategories.length > 0 ? (
+            <span className="text-sm text-gray-600">
+              Prices from: <span className="font-semibold text-sky-700 text-lg">${Math.min(...ticketCategories.map(tc => parseFloat(tc.price))).toFixed(2)}</span>
+            </span>
+          ) : (
+            <span className="text-sm text-gray-600">Price information loading...</span>
+          )}
         </div>
       </div>
 
@@ -151,98 +311,66 @@ const SeatSelectionPage = () => {
             </div>
 
             {/* Container for all section rows */}
+            {/* This structure assumes apiSeatingLayout is the direct array of sections like your original initialSeatingLayout */}
             <div className="w-full flex flex-col items-center gap-y-10 px-2">
-
+              {/* Dynamically group sections if needed or render based on your API structure */}
+              {/* Example: Rendering based on original group structure (Lower Foyer, Balcony) */}
+              {/* You'll need to filter/map `apiSeatingLayout` to fit this visual grouping */}
+              
               {/* Lower Foyer Sections Row */}
               <div className="flex flex-row justify-center items-start w-full gap-6">
-                {/* Left Lower Foyer (Index 0) */}
-                {seatingLayout[0] && (
-                  <div
-                    key={0}
-                    className={`w-[28%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSection === 0 ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`}
-                    style={seatingLayout[0].style || {}}
-                    onClick={() => handleSectionClick(0)}
-                  >
-                    <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
-                      {seatingLayout[0].section}
-                    </h3>
-                    {renderSeatsForSection(seatingLayout[0], 0)}
-                  </div>
-                )}
-                {/* Center Lower Foyer (Index 1) */}
-                {seatingLayout[1] && (
-                  <div
-                    key={1}
-                    className={`w-[44%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSection === 1 ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`}
-                    style={seatingLayout[1].style || {}}
-                    onClick={() => handleSectionClick(1)}
-                  >
-                    <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
-                      {seatingLayout[1].section}
-                    </h3>
-                    {renderSeatsForSection(seatingLayout[1], 1)}
-                  </div>
-                )}
-                {/* Right Lower Foyer (Index 2) */}
-                {seatingLayout[2] && (
-                  <div
-                    key={2}
-                    className={`w-[28%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSection === 2 ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`}
-                    style={seatingLayout[2].style || {}}
-                    onClick={() => handleSectionClick(2)}
-                  >
-                    <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
-                      {seatingLayout[2].section}
-                    </h3>
-                    {renderSeatsForSection(seatingLayout[2], 2)}
-                  </div>
-                )}
+                {apiSeatingLayout.filter(s => s.section.includes("Left Lower Foyer")).map((sectionData, idx) => (
+                    <div key={sectionData.section || idx} className={`w-[28%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSectionName === sectionData.section ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`} style={sectionData.style || {}} onClick={() => handleSectionClick(sectionData.section)}>
+                        <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
+                            {sectionData.section} ({sectionData.assignedCategoryName || 'Std.'}) - ${getSeatPrice(sectionData.section).toFixed(2)}
+                        </h3>
+                        {renderSeatsForSection(sectionData)}
+                    </div>
+                ))}
+                 {apiSeatingLayout.filter(s => s.section.includes("Center Lower Foyer")).map((sectionData, idx) => (
+                    <div key={sectionData.section || idx} className={`w-[44%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSectionName === sectionData.section ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`} style={sectionData.style || {}} onClick={() => handleSectionClick(sectionData.section)}>
+                        <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
+                           {sectionData.section} ({sectionData.assignedCategoryName || 'Std.'}) - ${getSeatPrice(sectionData.section).toFixed(2)}
+                        </h3>
+                        {renderSeatsForSection(sectionData)}
+                    </div>
+                ))}
+                {apiSeatingLayout.filter(s => s.section.includes("Right Lower Foyer")).map((sectionData, idx) => (
+                    <div key={sectionData.section || idx} className={`w-[28%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSectionName === sectionData.section ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`} style={sectionData.style || {}} onClick={() => handleSectionClick(sectionData.section)}>
+                        <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
+                            {sectionData.section} ({sectionData.assignedCategoryName || 'Std.'}) - ${getSeatPrice(sectionData.section).toFixed(2)}
+                        </h3>
+                        {renderSeatsForSection(sectionData)}
+                    </div>
+                ))}
               </div>
 
               {/* Balcony Sections Row */}
               <div className="flex flex-row justify-center items-start w-full gap-6 mt-8">
-                {/* Left Balcony (Index 3) */}
-                {seatingLayout[3] && (
-                  <div
-                    key={3}
-                    className={`w-[28%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSection === 3 ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`}
-                    style={seatingLayout[3].style || {}}
-                    onClick={() => handleSectionClick(3)}
-                  >
-                    <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
-                      {seatingLayout[3].section}
-                    </h3>
-                    {renderSeatsForSection(seatingLayout[3], 3)}
-                  </div>
-                )}
-                {/* Center Balcony (Index 4) */}
-                {seatingLayout[4] && (
-                  <div
-                    key={4}
-                    className={`w-[44%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSection === 4 ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`}
-                    style={seatingLayout[4].style || {}}
-                    onClick={() => handleSectionClick(4)}
-                  >
-                    <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
-                      {seatingLayout[4].section}
-                    </h3>
-                    {renderSeatsForSection(seatingLayout[4], 4)}
-                  </div>
-                )}
-                {/* Right Balcony (Index 5) */}
-                {seatingLayout[5] && (
-                  <div
-                    key={5}
-                    className={`w-[28%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSection === 5 ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`}
-                    style={seatingLayout[5].style || {}}
-                    onClick={() => handleSectionClick(5)}
-                  >
-                    <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
-                      {seatingLayout[5].section}
-                    </h3>
-                    {renderSeatsForSection(seatingLayout[5], 5)}
-                  </div>
-                )}
+                 {apiSeatingLayout.filter(s => s.section.includes("Left Balcony")).map((sectionData, idx) => (
+                    <div key={sectionData.section || idx} className={`w-[28%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSectionName === sectionData.section ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`} style={sectionData.style || {}} onClick={() => handleSectionClick(sectionData.section)}>
+                        <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
+                            {sectionData.section} ({sectionData.assignedCategoryName || 'Std.'}) - ${getSeatPrice(sectionData.section).toFixed(2)}
+                        </h3>
+                        {renderSeatsForSection(sectionData)}
+                    </div>
+                ))}
+                {apiSeatingLayout.filter(s => s.section.includes("Center Balcony")).map((sectionData, idx) => (
+                    <div key={sectionData.section || idx} className={`w-[44%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSectionName === sectionData.section ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`} style={sectionData.style || {}} onClick={() => handleSectionClick(sectionData.section)}>
+                        <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
+                            {sectionData.section} ({sectionData.assignedCategoryName || 'Std.'}) - ${getSeatPrice(sectionData.section).toFixed(2)}
+                        </h3>
+                        {renderSeatsForSection(sectionData)}
+                    </div>
+                ))}
+                 {apiSeatingLayout.filter(s => s.section.includes("Right Balcony")).map((sectionData, idx) => (
+                    <div key={sectionData.section || idx} className={`w-[28%] flex flex-col items-center transition-all duration-300 p-3 rounded-lg shadow-md ${activeSectionName === sectionData.section ? 'ring-2 ring-sky-500 bg-sky-50' : 'bg-white'}`} style={sectionData.style || {}} onClick={() => handleSectionClick(sectionData.section)}>
+                        <h3 className="font-semibold mb-3 text-sky-800 text-center px-2 py-1.5 bg-sky-100 rounded-md shadow-sm w-full text-base">
+                           {sectionData.section} ({sectionData.assignedCategoryName || 'Std.'}) - ${getSeatPrice(sectionData.section).toFixed(2)}
+                        </h3>
+                        {renderSeatsForSection(sectionData)}
+                    </div>
+                ))}
               </div>
             </div>
           </div>
@@ -262,7 +390,7 @@ const SeatSelectionPage = () => {
                     key={index}
                     className="bg-sky-100 text-sky-800 px-3.5 py-2 rounded-md text-sm font-medium shadow-sm border border-sky-200 whitespace-nowrap"
                   >
-                    {seat.section} - {seat.row}{seat.seat}
+                    {seat.section} - {seat.row}{seat.seat} (${seat.price.toFixed(2)})
                   </span>
                 ))}
               </div>
@@ -277,11 +405,11 @@ const SeatSelectionPage = () => {
         </div>
         <button
           className={`w-full lg:w-auto lg:px-12 py-3.5 rounded-lg text-base font-bold transition-all duration-300 relative flex items-center justify-center
-            ${selectedSeats.length > 0 ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white hover:from-sky-600 hover:to-blue-700 shadow-lg hover:shadow-xl' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-          onClick={handleOrder}
+            ${selectedSeats.length > 0 ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-lg hover:shadow-xl' : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+          onClick={handleConfirmAndProceed}
           disabled={selectedSeats.length === 0 || isLoading}
         >
-          {isLoading ? (
+          {isLoading && selectedSeats.length > 0 ? ( // Show loading only when actually proceeding
             <>
               <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
@@ -290,7 +418,7 @@ const SeatSelectionPage = () => {
               Processing...
             </>
           ) : selectedSeats.length > 0 ? (
-            `Proceed to Checkout (${selectedSeats.length} ${selectedSeats.length === 1 ? "Seat" : "Seats"})`
+            `Confirm Selection (${selectedSeats.length} ${selectedSeats.length === 1 ? "Seat" : "Seats"})`
           ) : (
             'Select Seats to Continue'
           )}

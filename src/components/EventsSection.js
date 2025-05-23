@@ -1,4 +1,4 @@
-// components/EventsSection.js
+// src/components/EventsSection.js
 'use client'
 import React, { useState, useEffect } from 'react';
 import EventCard from './EventCard';
@@ -10,12 +10,11 @@ function EventsSection() {
  const [loading, setLoading] = useState(true);
  const [error, setError] = useState(null);
  
- // Fetch events from the API
  useEffect(() => {
   const fetchEvents = async () => {
    try {
     setLoading(true);
-    const response = await fetch('/api/events');
+    const response = await fetch('/api/events'); // This fetches all event data including posterUrl
     
     if (!response.ok) {
      throw new Error('Failed to fetch events');
@@ -34,7 +33,6 @@ function EventsSection() {
   fetchEvents();
  }, []);
 
- // Filter events based on search query
  const filteredEvents = events.filter(event => 
   event.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
   (event.description && event.description.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -90,22 +88,33 @@ function EventsSection() {
      </div>
     ) : (
      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-      {filteredEvents.map(event => (
+      {filteredEvents.map(event => ( // event here is the full event object from the API
        <EventCard key={event._id} event={{
         id: event._id,
         name: event.name,
         date: (() => {
-          const eventDate = new Date(event.date + 'T' + (event.time || '00:00'));
-          const formattedDate = eventDate.toLocaleString('en-US', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-          });
-          const hours = eventDate.getHours().toString().padStart(2, '0');
-          const minutes = eventDate.getMinutes().toString().padStart(2, '0');
-          return `${formattedDate} at ${hours}.${minutes}`;
+          // Make sure date and time fields exist before trying to format
+          const eventDateStr = event.date; // Should be YYYY-MM-DD
+          const eventTimeStr = event.time || '00:00'; // Default to midnight if time is missing
+          if (!eventDateStr) return 'Date not available';
+
+          try {
+            const eventDateTime = new Date(`${eventDateStr}T${eventTimeStr}`);
+            const formattedDate = eventDateTime.toLocaleString('en-US', {
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric'
+            });
+            const hours = eventDateTime.getHours().toString().padStart(2, '0');
+            const minutes = eventDateTime.getMinutes().toString().padStart(2, '0');
+            return `${formattedDate} at ${hours}:${minutes}`;
+          } catch (e) {
+            console.error("Error formatting date for event:", event.name, e);
+            return event.date; // Fallback to raw date string
+          }
         })(),
-        description: event.description || 'No description available'
+        description: event.description || 'No description available',
+        posterUrl: event.posterUrl // Pass the posterUrl
        }} />
       ))}
      </div>

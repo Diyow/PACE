@@ -35,7 +35,7 @@ const EventDetailPage = () => {
   const [isWaitlistLoading, setIsWaitlistLoading] = useState(false);
   const [showWaitlistModal, setShowWaitlistModal] = useState(false);
   const [waitlistEmail, setWaitlistEmail] = useState('');
-  const [waitlistName, setWaitlistName] = useState(''); // For the modal input
+  const [waitlistName, setWaitlistName] = useState('');
   const [waitlistIsFullMessage, setWaitlistIsFullMessage] = useState('');
 
 
@@ -43,22 +43,26 @@ const EventDetailPage = () => {
     if (!eventId) return;
     setIsEventDataLoading(true);
     setError(null);
+    console.log(`[EventDetail] Fetching details for eventId: ${eventId}`);
     try {
       const eventRes = await fetch(`/api/events/${eventId}`);
+      console.log(`[EventDetail] API response status: ${eventRes.status}`);
       if (!eventRes.ok) {
         if (eventRes.status === 404) throw new Error('Event not found.');
-        const errorData = await eventRes.json().catch(() => ({}));
+        const errorData = await eventRes.json().catch(() => ({ error: `HTTP error ${eventRes.status}` }));
         throw new Error(errorData.error || 'Failed to fetch event details.');
       }
       const eventData = await eventRes.json();
+      console.log("[EventDetail] Fetched event data from API:", eventData); // Log the full event data
       setEvent(eventData);
       if (eventData.ticketCategories && eventData.ticketCategories.length > 0) {
         setTicketTypes(eventData.ticketCategories.map((tt, index) => ({ ...tt, id: tt._id || `tt-${index}` })));
       } else {
+        console.log("[EventDetail] No ticket categories found for this event.");
         setTicketTypes([]);
       }
     } catch (err) {
-      console.error("Error fetching event details:", err);
+      console.error("[EventDetail] Error fetching event details:", err);
       setError(err.message);
       setEvent(null);
     } finally {
@@ -67,31 +71,29 @@ const EventDetailPage = () => {
   }, [eventId]);
 
   const checkWaitlistStatus = useCallback(async () => {
-    // This function checks if the *currently logged-in user* is on the waitlist.
-    // It uses `checkStatus=true` to differentiate from an admin fetching the whole list.
     if (sessionStatus === 'authenticated' && session?.user?.id && eventId) {
       setIsWaitlistLoading(true);
       try {
-        const res = await fetch(`/api/waitlist?eventId=${eventId}&checkStatus=true`); // Added checkStatus
+        const res = await fetch(`/api/waitlist?eventId=${eventId}&checkStatus=true`);
         const data = await res.json();
         if (res.ok) {
             setIsOnWaitlist(data.isOnWaitlist || false);
         } else {
-            if (res.status !== 404) { // 404 means not on waitlist, not an error to toast
-                console.error("API error checking waitlist status:", data.error || "Unknown error");
+            if (res.status !== 404) {
+                console.error("[EventDetail] API error checking waitlist status:", data.error || "Unknown error");
                 toast.error(data.error || "Could not check waitlist status.");
             }
             setIsOnWaitlist(false);
         }
       } catch (err) {
-        console.error("Error checking waitlist status:", err);
+        console.error("[EventDetail] Error checking waitlist status:", err);
         toast.error("Failed to check waitlist status.");
         setIsOnWaitlist(false);
       } finally {
         setIsWaitlistLoading(false);
       }
     } else {
-      setIsOnWaitlist(false); // Not authenticated or no eventId, so not on waitlist by session
+      setIsOnWaitlist(false);
     }
   }, [eventId, session, sessionStatus]);
 
@@ -100,10 +102,10 @@ const EventDetailPage = () => {
   }, [fetchEventDetails]);
 
   useEffect(() => {
-    if (eventId && sessionStatus !== 'loading') { // Ensure session status is resolved
+    if (eventId && sessionStatus !== 'loading') {
         checkWaitlistStatus();
     }
-  }, [eventId, sessionStatus, checkWaitlistStatus]); // Rerun if sessionStatus changes
+  }, [eventId, sessionStatus, checkWaitlistStatus]);
 
   useEffect(() => {
     const seatsDataString = searchParams.get('selectedSeatsData');
@@ -115,7 +117,7 @@ const EventDetailPage = () => {
         setTotalPriceFromSeats(newTotalFromSeats);
       } 
       catch (e) { 
-        console.error("Error parsing selectedSeatsData from URL:", e);
+        console.error("[EventDetail] Error parsing selectedSeatsData from URL:", e);
         setSelectedSeatsSummary(null); 
         setTotalPriceFromSeats(0);
       }
@@ -127,13 +129,90 @@ const EventDetailPage = () => {
     setAppliedDiscountInfo(null);
   }, [searchParams]);
 
-  const handleSelectSeats = () => { /* ... same ... */ };
-  const handleApplyPromoCode = async () => { /* ... same ... */ };
+  const handleSelectSeats = () => {
+    if (!event || !event._id) {
+      toast.error("Event details are not available yet. Please wait or refresh.");
+      return;
+    }
+    if (isEventDataLoading) {
+        toast.error("Event data is still loading. Please wait.");
+        return;
+    }
+    if (ticketTypes.length === 0) {
+        toast.error("No ticket types defined for this event. Seat selection unavailable.");
+        return;
+    }
+    // Pass eventId, eventName. pricePerSeat is a representative price.
+    // The seat selection page will fetch full ticketCategories based on eventId.
+    const representativePrice = ticketTypes[0]?.price || 0;
+    console.log(`[EventDetail] Navigating to seat selection for eventId: ${event._id}`);
+    router.push(`/seat-selection?eventId=${event._id}&eventName=${encodeURIComponent(event.name)}&pricePerSeat=${representativePrice}`);
+  };
+
+  const handleApplyPromoCode = async () => {
+    if (!promoCodeInput.trim() || !eventId || totalPriceFromSeats <= 0) {
+        toast.error("Please enter a promo code. Ensure seats are selected.");
+        return;
+    }
+    setPromoCodeLoading(true);
+    try {
+        const response = await fetch(`/api/promo-codes?eventId=${eventId}&code=${promoCodeInput.toUpperCase()}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.valid) {
+            throw new Error(data.error || "Invalid or expired promo code.");
+        }
+        
+        let discountAmount = 0;
+        if (data.discountType === 'percentage') {
+            discountAmount = (totalPriceFromSeats * parseFloat(data.discountValue)) / 100;
+        } else if (data.discountType === 'fixed') {
+            discountAmount = parseFloat(data.discountValue);
+        }
+        
+        setAppliedDiscountInfo({
+            code: data.code,
+            amount: discountAmount,
+            type: data.discountType,
+            value: data.discountValue
+        });
+        toast.success(`Promo code "${data.code}" applied!`);
+
+    } catch (error) {
+        console.error("Error applying promo code:", error);
+        toast.error(error.message);
+        setAppliedDiscountInfo(null); // Clear previous discount if new one fails
+    } finally {
+        setPromoCodeLoading(false);
+    }
+  };
+
   const finalTotal = appliedDiscountInfo ? Math.max(0, totalPriceFromSeats - appliedDiscountInfo.amount) : totalPriceFromSeats;
-  const handleProceedToPayment = () => { /* ... same ... */ };
+  
+  const handleProceedToPayment = () => {
+    if (!event || !selectedSeatsSummary || selectedSeatsSummary.length === 0) {
+        toast.error("Please select your seats first.");
+        return;
+    }
+    if (sessionStatus === 'unauthenticated') {
+        toast.error("Please log in to proceed with the payment.");
+        router.push(`/login?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        return;
+    }
+
+    const paymentDetails = {
+        eventId: event._id,
+        eventName: event.name,
+        selectedSeats: selectedSeatsSummary, // These have { section, row, seat, category, price }
+        totalAmount: finalTotal,
+        appliedPromoCode: appliedDiscountInfo ? appliedDiscountInfo.code : null,
+        discountAmount: appliedDiscountInfo ? appliedDiscountInfo.amount : 0,
+    };
+    localStorage.setItem('paymentDetails', JSON.stringify(paymentDetails));
+    router.push(`/payment?total=${finalTotal.toFixed(2)}`);
+  };
 
   const openWaitlistModal = () => {
-    // Pre-fill with session data if available, otherwise fields will be empty
     setWaitlistEmail(session?.user?.email || '');
     setWaitlistName(session?.user?.name || '');
     setShowWaitlistModal(true);
@@ -153,7 +232,7 @@ const EventDetailPage = () => {
       const payload = { 
         eventId, 
         email: waitlistEmail, 
-        name: waitlistName.trim() || undefined // Send name only if provided
+        name: waitlistName.trim() || undefined
       };
       const response = await fetch('/api/waitlist', {
         method: 'POST',
@@ -162,7 +241,7 @@ const EventDetailPage = () => {
       });
       const data = await response.json();
       if (!response.ok) {
-        if (response.status === 409) { // Waitlist full or already on waitlist (API might return 409 for full, 400 for already on)
+        if (response.status === 409) {
             setWaitlistIsFullMessage(data.error || "The waitlist is currently full or you are already on it.");
             toast.error(data.error || "Could not join waitlist.");
         } else {
@@ -170,14 +249,14 @@ const EventDetailPage = () => {
         }
       } else {
         toast.success(data.message || "Successfully joined the waitlist!");
-        setIsOnWaitlist(true); // Assume success means user is now on waitlist
+        setIsOnWaitlist(true);
         setShowWaitlistModal(false);
         setWaitlistEmail('');
         setWaitlistName('');
       }
     } catch (err) {
       toast.error(err.message);
-      console.error("Error joining waitlist:", err);
+      console.error("[EventDetail] Error joining waitlist:", err);
     } finally {
       setIsWaitlistLoading(false);
     }
@@ -186,13 +265,10 @@ const EventDetailPage = () => {
   const handleLeaveWaitlist = async () => {
     if (sessionStatus !== 'authenticated' || !eventId) {
         toast.error("You must be logged in to leave a waitlist.");
-        // Optionally, if you stored a token for unauthenticated waitlist entries,
-        // you'd need a different mechanism to leave.
         return;
     }
     setIsWaitlistLoading(true);
     try {
-      // The DELETE API uses session to identify the user, so no attendeeId needed in query for self-removal
       const response = await fetch(`/api/waitlist?eventId=${eventId}`, { method: 'DELETE' });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to leave waitlist.");
@@ -200,7 +276,7 @@ const EventDetailPage = () => {
       setIsOnWaitlist(false);
     } catch (err) {
       toast.error(err.message);
-      console.error("Error leaving waitlist:", err);
+      console.error("[EventDetail] Error leaving waitlist:", err);
     } finally {
       setIsWaitlistLoading(false);
     }
@@ -214,7 +290,6 @@ const EventDetailPage = () => {
 
   const eventDate = event.date ? new Date(`${event.date}T${event.time || '00:00:00'}`) : null;
   const isSoldOut = typeof event.ticketsAvailable === 'number' && event.ticketsAvailable <= 0;
-  // Use waitlistCapacity from the event data fetched from API
   const isWaitlistAtCapacity = event.currentWaitlistSize >= event.waitlistCapacity; 
 
 
@@ -226,12 +301,11 @@ const EventDetailPage = () => {
         </button>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 bg-white p-6 sm:p-8 rounded-xl shadow-xl overflow-hidden">
-            {/* Event Info (same as before) */}
             <h1 className="text-3xl sm:text-4xl font-bold text-sky-800 mb-3">{event.name}</h1>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-sky-700 mb-6 text-sm">
               {eventDate && ( <div className="flex items-center"> <CalendarDaysIcon className="h-5 w-5 mr-1.5 opacity-80" /> <span>{eventDate.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}</span> </div> )}
               {eventDate && event.time && ( <div className="flex items-center"> <ClockIcon className="h-5 w-5 mr-1.5 opacity-80" /> <span>{eventDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span> </div> )}
-              <div className="flex items-center"> <MapPinIcon className="h-5 w-5 mr-1.5 opacity-80" /> <span>Help Auditorium</span> </div>
+              <div className="flex items-center"> <MapPinIcon className="h-5 w-5 mr-1.5 opacity-80" /> <span>Help Auditorium</span> </div> {/* Placeholder location */}
             </div>
             {event.posterUrl ? <img src={event.posterUrl} alt={`${event.name} Poster`} className="w-full h-64 sm:h-80 md:h-96 object-cover rounded-lg mb-6 shadow-lg"/> : <div className="w-full h-64 sm:h-80 md:h-96 bg-gradient-to-br from-sky-200 to-blue-200 rounded-lg mb-6 flex items-center justify-center shadow-lg"> <PhotoIcon className="h-24 w-24 text-sky-500 opacity-70" /> </div> }
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -255,9 +329,9 @@ const EventDetailPage = () => {
           <div className="lg:col-span-1">
             <div className="sticky top-28 bg-white p-6 sm:p-8 rounded-xl shadow-xl">
               {!selectedSeatsSummary && !isSoldOut && (
-                <> {/* Get Your Tickets UI */}
+                <>
                     <h2 className="text-2xl font-bold text-sky-800 mb-6 border-b border-sky-200 pb-3">Get Your Tickets</h2>
-                    {ticketTypes.length > 0 ? ( ticketTypes.map(tt => ( <div key={tt.id || tt._id} className="mb-3 p-3 border border-sky-100 rounded-lg bg-sky-50/50"> <div className="flex justify-between items-center"> <h3 className="font-semibold text-sky-700">{tt.category}</h3> <p className="font-bold text-sky-600">${parseFloat(tt.price).toFixed(2)}</p> </div> <p className="text-xs text-gray-500 mt-1">Per person</p> </div> )) ) : ( <p className="text-gray-500 mb-4">Ticket information loading...</p> )}
+                    {ticketTypes.length > 0 ? ( ticketTypes.map(tt => ( <div key={tt.id || tt._id} className="mb-3 p-3 border border-sky-100 rounded-lg bg-sky-50/50"> <div className="flex justify-between items-center"> <h3 className="font-semibold text-sky-700">{tt.category}</h3> <p className="font-bold text-sky-600">${parseFloat(tt.price).toFixed(2)}</p> </div> <p className="text-xs text-gray-500 mt-1">Per person</p> </div> )) ) : ( <p className="text-gray-500 mb-4">Ticket information loading or not available...</p> )}
                     <button onClick={handleSelectSeats} disabled={isEventDataLoading || ticketTypes.length === 0 || isSoldOut }
                         className={`w-full font-semibold py-3 px-4 rounded-lg shadow-md transition-all flex items-center justify-center ${ isSoldOut ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-sky-500 text-white hover:bg-sky-600 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 disabled:opacity-60 disabled:cursor-not-allowed'}`} >
                         <GetTicketsIcon className="h-5 w-5 mr-2" />
@@ -267,9 +341,9 @@ const EventDetailPage = () => {
               )}
 
               {isSoldOut && !selectedSeatsSummary && (
-                <> {/* Waitlist UI */}
+                <>
                   <h2 className="text-2xl font-bold text-sky-800 mb-4 border-b border-sky-200 pb-3">Event Sold Out</h2>
-                  {isWaitlistLoading && !showWaitlistModal ? ( // Show spinner only if not opening modal
+                  {isWaitlistLoading && !showWaitlistModal ? (
                      <div className="flex justify-center items-center py-3"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sky-500"></div></div>
                   ) : isOnWaitlist ? (
                     <div className="text-center">
@@ -278,7 +352,7 @@ const EventDetailPage = () => {
                         <UserMinusIcon className="h-5 w-5 mr-2" /> {isWaitlistLoading ? 'Processing...' : 'Leave Waitlist'}
                       </button>
                     </div>
-                  ) : isWaitlistAtCapacity ? ( // Check if waitlist capacity is reached
+                  ) : isWaitlistAtCapacity ? (
                     <div className="p-3 bg-orange-50 border border-orange-200 rounded-md text-center">
                         <ExclamationTriangleIcon className="h-6 w-6 text-orange-500 mx-auto mb-2"/>
                         <p className="text-sm text-orange-700 font-medium">The waitlist for this event is currently full.</p>
@@ -292,13 +366,13 @@ const EventDetailPage = () => {
                       </button>
                     </>
                   )}
-                  {waitlistIsFullMessage && !isOnWaitlist && !isWaitlistAtCapacity && ( // Show if API returned full message during join attempt
+                  {waitlistIsFullMessage && !isOnWaitlist && !isWaitlistAtCapacity && (
                      <p className="text-sm text-orange-600 mt-3 text-center">{waitlistIsFullMessage}</p>
                   )}
                 </>
               )}
 
-              {selectedSeatsSummary && ( /* Payment flow UI */ 
+              {selectedSeatsSummary && ( 
                  <>
                   <h2 className="text-2xl font-bold text-sky-800 mb-4 border-b border-sky-200 pb-3">Your Selection</h2>
                    <div className="mb-4 space-y-1"> <p className="text-sm text-gray-600">Selected Seats:</p> <div className="flex flex-wrap gap-2"> {selectedSeatsSummary.map((seat, index) => ( <span key={index} className="bg-sky-100 text-sky-800 px-2 py-1 rounded-md text-xs"> {seat.section} - {seat.row}{seat.seat} ({seat.category || 'Standard'}) </span> ))} </div> </div>

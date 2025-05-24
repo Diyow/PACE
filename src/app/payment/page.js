@@ -3,21 +3,22 @@
 
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { toast } from 'react-hot-toast'; // For UI notifications
+import { toast } from 'react-hot-toast'; 
 
 const PaymentPage = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const totalFromQuery = parseFloat(searchParams.get('total')) || 0;
-  // const eventIdFromQuery = searchParams.get('eventId'); // Keep if needed for booking
+  // totalFromQuery is the final total AFTER discount from event details page
+  const totalFromQuery = parseFloat(searchParams.get('total')) || 0; 
 
   const [paymentDetails, setPaymentDetails] = useState(null); // From localStorage
   const [selectedSeats, setSelectedSeats] = useState([]);
-  const [totalAmount, setTotalAmount] = useState(0);
+  const [totalAmount, setTotalAmount] = useState(0); // This will be the final amount to pay
+  const [originalSubtotal, setOriginalSubtotal] = useState(0); // Subtotal before discount
+  const [discountInfo, setDiscountInfo] = useState(null); // { code, amount }
 
-  const [paymentMethod, setPaymentMethod] = useState('credit-card'); // Default or from user selection
-  // Dummy state for card details if you want to show the form
+  const [paymentMethod, setPaymentMethod] = useState('credit-card');
   const [cardNumber, setCardNumber] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [cvv, setCvv] = useState('');
@@ -30,19 +31,34 @@ const PaymentPage = () => {
     if (storedDetailsString) {
       try {
         const parsedDetails = JSON.parse(storedDetailsString);
+        console.log("[PaymentPage] Parsed paymentDetails from localStorage:", parsedDetails);
         setPaymentDetails(parsedDetails);
         setSelectedSeats(parsedDetails.selectedSeats || []);
-        setTotalAmount(parsedDetails.totalAmount || totalFromQuery);
+        
+        // Calculate original subtotal from selected seats prices
+        const subtotalCalc = (parsedDetails.selectedSeats || []).reduce((sum, seat) => sum + (parseFloat(seat.price) || 0), 0);
+        setOriginalSubtotal(subtotalCalc);
+
+        if (parsedDetails.appliedPromoCode && parsedDetails.discountAmount > 0) {
+            setDiscountInfo({
+                code: parsedDetails.appliedPromoCode,
+                amount: parseFloat(parsedDetails.discountAmount)
+            });
+        }
+        // totalAmount is the final amount after potential discount, passed via query or from parsedDetails
+        setTotalAmount(parsedDetails.totalAmount || totalFromQuery); 
+
       } catch (error) {
-        console.error('Error parsing paymentDetails from localStorage:', error);
+        console.error('[PaymentPage] Error parsing paymentDetails from localStorage:', error);
         toast.error("Could not retrieve booking details. Please try again.");
-        setTotalAmount(totalFromQuery);
+        setTotalAmount(totalFromQuery); // Fallback
       }
     } else {
        toast.warn("No booking details found. Please start from the event page.");
-       setTotalAmount(totalFromQuery);
+       router.push('/'); // Redirect if no details
+       setTotalAmount(totalFromQuery); // Fallback
     }
-  }, [totalFromQuery]);
+  }, [totalFromQuery, router]); // Added router to dependency array
 
   const handlePayNow = async () => {
     if (!paymentDetails || selectedSeats.length === 0) {
@@ -50,14 +66,12 @@ const PaymentPage = () => {
         return;
     }
 
-    // Basic validation for dummy fields if you're showing them
     if (paymentMethod === 'credit-card') {
         if (!cardHolderName || !cardNumber || !expiryDate || !cvv) {
             toast.error("Please fill in all dummy card details to simulate.");
             return;
         }
     } else if (paymentMethod === 'e-wallet') {
-        // Add any dummy e-wallet fields if you have them
         const ewalletId = document.getElementById('ewalletId')?.value;
         if (!ewalletId) {
             toast.error("Please enter a dummy e-wallet ID.");
@@ -65,107 +79,63 @@ const PaymentPage = () => {
         }
     }
 
-
     setIsProcessing(true);
     toast.loading("Simulating payment processing...");
 
-    // Simulate network delay for payment processing
-    await new Promise(resolve => setTimeout(resolve, 2500)); // 2.5-second delay
+    await new Promise(resolve => setTimeout(resolve, 1500)); 
 
     try {
-        // **A. Create Booking in your System**
-        // The paymentDetails from localStorage should have everything needed.
-        // Your /api/bookings endpoint will handle creating the booking and individual tickets.
         const bookingPayload = {
             eventId: paymentDetails.eventId,
-            // ticketTypeIds, quantities are derived by your backend from selectedSeats
-            // Your API should iterate over `paymentDetails.selectedSeats` to create tickets
-            // and determine ticketTypeIds.
-            // The structure passed to /api/bookings should match what it expects.
-            // Based on your API, it expects eventId, ticketTypeIds, and quantities.
-            // We need to map selectedSeats to this.
-            // For now, assuming selectedSeats contains enough info to create tickets on backend
-            ticketDetails: paymentDetails.selectedSeats.map(seat => ({
-                ticketTypeId: seat.ticketTypeId || null, // You'll need to ensure ticketTypeId is passed from seat selection or derived
-                category: seat.category,
-                price: seat.price,
-                quantity: 1, // Each seat is one ticket
-                seatInfo: `${seat.section}-${seat.row}${seat.seat}` // Example seat identifier
-            })),
-            totalAmount: paymentDetails.totalAmount,
-            paymentStatus: 'completed', // Mark as completed for this simulation
-            // Add attendeeId if the user is logged in (from session)
+            _detailedSelectedSeats: paymentDetails.selectedSeats,
+            totalAmount: originalSubtotal, // Send the original total amount BEFORE discount
+            paymentStatusOverride: 'completed',
+            // Add discount information if available
+            ...(discountInfo && {
+                appliedPromoCode: discountInfo.code,
+                discountAppliedAmount: discountInfo.amount,
+            }),
+            // The final amount paid would be originalSubtotal - discountAppliedAmount
+            // The backend can recalculate this or trust the client's final totalAmount for verification
+            // For simplicity, we let backend recalculate if needed, but store the discount.
         };
         
-        // If your /api/bookings POST expects `ticketTypeIds` and `quantities` arrays directly:
-        // You would need to aggregate from `paymentDetails.selectedSeats` if multiple seats of same type exist
-        // or ensure `selectedSeats` already contains distinct `ticketTypeId` for each seat
-        // For this simulation, let's assume your current /api/bookings POST is flexible or you adjust it.
-        // A simplified payload for /api/bookings might directly use selectedSeats to generate tickets.
+        console.log("[PaymentPage] Sending booking payload:", bookingPayload);
 
         const bookingResponse = await fetch('/api/bookings', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                // Add Authorization header if your API requires authentication
-            },
-            body: JSON.stringify({
-                eventId: paymentDetails.eventId,
-                // This part needs careful mapping to what /api/bookings expects.
-                // Let's assume each selected seat becomes one ticket of its category.
-                // Your backend `/api/bookings` needs to be robust enough to handle this.
-                // It might be simpler if `/api/bookings` can take a list of { ticketTypeId, quantity }
-                // For now, we'll pass a structure that the backend can iterate over.
-                // This is a placeholder, you'll need to ensure this matches your API:
-                ticketTypeIds: paymentDetails.selectedSeats.map(s => s.ticketTypeId || s.category), // Fallback to category if no ID
-                quantities: paymentDetails.selectedSeats.map(() => 1),
-                // You might also pass the full selectedSeats array for detailed ticket creation
-                _detailedSelectedSeats: paymentDetails.selectedSeats, // For backend to use
-                totalAmount: paymentDetails.totalAmount, // Ensure this is passed
-                paymentStatusOverride: 'completed' // Signal to backend this is a completed payment
-            }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bookingPayload),
         });
 
+        const bookingResult = await bookingResponse.json(); // Always try to parse, even for errors
+
         if (!bookingResponse.ok) {
-            const errorData = await bookingResponse.json();
-            console.error("Booking API Error Data:", errorData);
-            throw new Error(errorData.error || "Booking creation failed after simulated payment.");
+            console.error("[PaymentPage] Booking API Error Data:", bookingResult);
+            throw new Error(bookingResult.error || "Booking creation failed after simulated payment.");
         }
-        const bookingResult = await bookingResponse.json(); // Contains bookingId, etc.
-
-        // **B. Send Confirmation Email/Notification (Simulated)**
-        // In a real app, your backend would send an email after successful booking.
-        // For this project, a console log or a more prominent UI notification is fine.
-        console.log("Simulated Email Sent: Booking Confirmation for", paymentDetails.eventName);
-        console.log("Booking ID:", bookingResult.bookingId);
-        console.log("Ticket Details:", paymentDetails.selectedSeats);
-        console.log("Total Paid:", paymentDetails.totalAmount);
-
-        // Update seat statuses (this should ideally be part of the booking API transaction)
-        // For each selected seat, call PUT /api/seats/[seatId] to set status to 'occupied'
-        // This is a simplified client-side loop; in production, the backend handles this.
-        for (const seat of paymentDetails.selectedSeats) {
-            // You need a way to get the actual MongoDB _id for each seat to update it.
-            // If your `selectedSeats` objects don't have the `_id` of the seat document,
-            // this step is harder from the client. It's better if the booking API handles this.
-            // For now, we'll skip direct seat status update from client here, assuming booking API marks them.
-            console.log(`Simulating: Mark seat ${seat.section}-${seat.row}${seat.seat} as occupied.`);
+        
+        console.log("[PaymentPage] Simulated Email Sent: Booking Confirmation for", paymentDetails.eventName);
+        console.log("[PaymentPage] Booking ID:", bookingResult.bookingId);
+        console.log("[PaymentPage] Ticket Details:", paymentDetails.selectedSeats);
+        console.log("[PaymentPage] Original Subtotal:", originalSubtotal.toFixed(2));
+        if(discountInfo) {
+            console.log("[PaymentPage] Discount Applied:", discountInfo.code, "-$", discountInfo.amount.toFixed(2));
         }
+        console.log("[PaymentPage] Final Amount Paid:", totalAmount.toFixed(2)); // totalAmount is already discounted
 
+        toast.dismiss();
+        toast.success(`Payment Successful! Booking ID: ${bookingResult.bookingId}.`);
 
-        toast.dismiss(); // Dismiss loading toast
-        toast.success(`Payment Successful! Booking ID: ${bookingResult.bookingId}. Check console for details.`);
-
-        // **C. Clear localStorage and Redirect**
         localStorage.removeItem('paymentDetails');
         setTimeout(() => {
-            router.push('/'); // Redirect to homepage as per requirement
-        }, 3000); // Delay redirect slightly to allow user to see success toast
+            router.push('/'); 
+        }, 2000);
 
     } catch (error) {
         toast.dismiss();
         toast.error(`An error occurred: ${error.message}`);
-        console.error("Simulated Payment/Booking error:", error);
+        console.error("[PaymentPage] Simulated Payment/Booking error:", error);
     } finally {
         setIsProcessing(false);
     }
@@ -197,8 +167,18 @@ const PaymentPage = () => {
           <div className="mb-3">
             {renderSelectedSeatsSummary()}
           </div>
-          <hr className="border-gray-200 my-3" />
-          <p className="font-bold mt-3 text-xl text-sky-700">
+          <hr className="border-gray-200 my-2" />
+           <p className="text-sm text-gray-700">
+            Subtotal <span className="float-right">${originalSubtotal.toFixed(2)}</span>
+          </p>
+          {discountInfo && (
+            <p className="text-sm text-green-600">
+                Discount ({discountInfo.code})
+                <span className="float-right">-${discountInfo.amount.toFixed(2)}</span>
+            </p>
+          )}
+          <hr className="border-gray-200 my-2" />
+          <p className="font-bold mt-2 text-xl text-sky-700">
             Total Amount <span className="float-right text-black">${totalAmount.toFixed(2)}</span>
           </p>
         </div>
@@ -218,7 +198,6 @@ const PaymentPage = () => {
                 E-Wallet (Simulated)
               </label>
             </div>
-            {/* Add other simulated methods if needed */}
           </div>
         </div>
 
@@ -255,7 +234,6 @@ const PaymentPage = () => {
                 </div>
             </div>
         )}
-
 
         <button
           className={`w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-3.5 rounded-lg font-bold text-lg shadow-md hover:from-green-600 hover:to-emerald-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all disabled:opacity-60 ${isProcessing ? 'cursor-wait animate-pulse' : ''}`}

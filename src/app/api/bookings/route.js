@@ -6,82 +6,117 @@ import { ObjectId } from 'mongodb';
 import { authOptions } from '@/lib/auth';
 import { sendEmail, getBookingConfirmationEmail } from '@/utils/email';
 
-// CREATE - Create a new booking
 export async function POST(request) {
+  console.log("[API/Bookings] Received POST request");
   try {
     const data = await request.json();
-    const { eventId, ticketTypeIds, quantities, paymentStatusOverride, _detailedSelectedSeats } = data; 
+    console.log("[API/Bookings] Request data:", JSON.stringify(data, null, 2));
+
+    const { 
+        eventId, 
+        paymentStatusOverride, 
+        _detailedSelectedSeats,
+        totalAmount: clientGrossTotalAmount, // This is the original total amount BEFORE discount from payment page
+        appliedPromoCode,
+        discountAppliedAmount 
+    } = data; 
     
     if (!eventId) {
-      return NextResponse.json({ error: 'Event ID is required' }, { status: 400 });
+      console.error("[API/Bookings] Error: Event ID is required");
+      return NextResponse.json({ error: 'Event ID is required', details: "eventId was not provided in the request body." }, { status: 400 });
     }
-    if (!_detailedSelectedSeats && (!ticketTypeIds || !quantities || ticketTypeIds.length !== quantities.length)) {
-        return NextResponse.json({ error: 'Either detailed selected seats or ticket type IDs and quantities are required and must match' }, { status: 400 });
+    if (!ObjectId.isValid(eventId)) {
+        console.error("[API/Bookings] Error: Invalid Event ID format", eventId);
+        return NextResponse.json({ error: 'Invalid Event ID format', details: `Received eventId: ${eventId}` }, { status: 400 });
+    }
+
+    const hasDetailedSeats = _detailedSelectedSeats && Array.isArray(_detailedSelectedSeats) && _detailedSelectedSeats.length > 0;
+    
+    if (!hasDetailedSeats) {
+        console.error("[API/Bookings] Error: _detailedSelectedSeats is required.");
+        return NextResponse.json({ error: '_detailedSelectedSeats is required for booking.', details: "Missing selected seat data." }, { status: 400 });
     }
     
     const session = await getServerSession(authOptions);
     if (!session || !session.user || !session.user.id) {
-      return NextResponse.json({ error: 'Unauthorized - User session is invalid or user ID is missing.' }, { status: 401 });
+      console.error("[API/Bookings] Error: Unauthorized - User session is invalid or user ID is missing.");
+      return NextResponse.json({ error: 'Unauthorized - User session is invalid or user ID is missing.', details: "No valid session." }, { status: 401 });
     }
+    console.log("[API/Bookings] Session user ID:", session.user.id);
     
     const { db } = await connectToDatabase();
-    const eventObjectId = new ObjectId(eventId); // Use a consistent ObjectId variable
+    const eventObjectId = new ObjectId(eventId);
     
     const event = await db.collection('events').findOne({ _id: eventObjectId });
     if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+      console.error(`[API/Bookings] Error: Event not found for ID: ${eventId}`);
+      return NextResponse.json({ error: 'Event not found', details: `Event with ID ${eventId} does not exist.` }, { status: 404 });
     }
+    console.log("[API/Bookings] Found event:", event.name);
     
-    let totalAmount = 0;
-    const ticketDetails = [];
+    let calculatedGrossTotal = 0;
+    const ticketDetails = []; 
 
-    if (_detailedSelectedSeats && Array.isArray(_detailedSelectedSeats) && _detailedSelectedSeats.length > 0) {
+    if (hasDetailedSeats) {
+        console.log("[API/Bookings] Processing _detailedSelectedSeats:", _detailedSelectedSeats);
         for (const seat of _detailedSelectedSeats) {
+            if (!seat.price || isNaN(parseFloat(seat.price))) {
+                console.error(`[API/Bookings] Error: Invalid price for seat in category ${seat.category}. Price: ${seat.price}`);
+                return NextResponse.json({ error: `Invalid price for seat in category ${seat.category}`, details: `Seat data: ${JSON.stringify(seat)}` }, { status: 400 });
+            }
             const seatPrice = parseFloat(seat.price);
-            if (isNaN(seatPrice)) {
-                 return NextResponse.json({ error: `Invalid price for seat in category ${seat.category}` }, { status: 400 });
+            calculatedGrossTotal += seatPrice;
+            
+            let derivedTicketTypeId = null;
+            if (seat.ticketTypeId && ObjectId.isValid(seat.ticketTypeId)) {
+                derivedTicketTypeId = new ObjectId(seat.ticketTypeId);
+            } else if (seat.ticketTypeId) {
+                 console.warn(`[API/Bookings] seat.ticketTypeId '${seat.ticketTypeId}' is present but invalid. Will try to derive by category name if possible.`);
             }
-            let derivedTicketTypeId = seat.ticketTypeId ? new ObjectId(seat.ticketTypeId) : null;
-            if (!derivedTicketTypeId && seat.category) {
-                const tt = await db.collection('ticketTypes').findOne({ eventId: eventObjectId, category: seat.category });
-                if (tt) {
-                    derivedTicketTypeId = tt._id;
+            
+            let seatCategoryName = seat.category;
+
+            if (!derivedTicketTypeId && seatCategoryName) {
+                const matchingCategoryFromEvent = event.ticketCategories?.find(tc => tc.category === seatCategoryName);
+                if (matchingCategoryFromEvent && matchingCategoryFromEvent._id && ObjectId.isValid(matchingCategoryFromEvent._id.toString())) {
+                    derivedTicketTypeId = new ObjectId(matchingCategoryFromEvent._id.toString());
+                } else {
+                    console.warn(`[API/Bookings] Warning: Could not derive ticketTypeId for seat category: ${seatCategoryName} from event.ticketCategories.`);
                 }
+            } else if (!seatCategoryName && derivedTicketTypeId) {
+                const matchingCategoryFromEvent = event.ticketCategories?.find(tc => tc._id.equals(derivedTicketTypeId));
+                if (matchingCategoryFromEvent) seatCategoryName = matchingCategoryFromEvent.category;
             }
-            totalAmount += seatPrice;
+            if (!seatCategoryName) seatCategoryName = "General"; 
+
             ticketDetails.push({
                 ticketTypeId: derivedTicketTypeId,
-                category: seat.category,
-                price: seatPrice,
-                quantity: 1,
+                category: seatCategoryName,
+                price: seatPrice, // Original price of this ticket type/seat
+                quantity: 1, 
                 seatInfo: seat.seatInfo || `${seat.section}-${seat.row}${seat.seat}`
             });
         }
-    } else if (ticketTypeIds && quantities) {
-        for (let i = 0; i < ticketTypeIds.length; i++) {
-            const ticketTypeIdStr = ticketTypeIds[i];
-            const quantity = parseInt(quantities[i]);
-            if (quantity <= 0) return NextResponse.json({ error: 'Quantity must be greater than 0' }, { status: 400 });
-            if (!ObjectId.isValid(ticketTypeIdStr)) return NextResponse.json({ error: `Invalid TicketType ID format: ${ticketTypeIdStr}` }, { status: 400 });
-            const ticketType = await db.collection('ticketTypes').findOne({ _id: new ObjectId(ticketTypeIdStr), eventId: eventObjectId });
-            if (!ticketType) return NextResponse.json({ error: `Ticket type with ID ${ticketTypeIdStr} not found` }, { status: 404 });
-            totalAmount += parseFloat(ticketType.price) * quantity;
-            ticketDetails.push({
-                ticketTypeId: new ObjectId(ticketTypeIdStr),
-                category: ticketType.category,
-                price: parseFloat(ticketType.price),
-                quantity: quantity
-            });
-        }
-    } else {
-        return NextResponse.json({ error: 'No ticket information provided' }, { status: 400 });
     }
+    
+    if (Math.abs(calculatedGrossTotal - (clientGrossTotalAmount || 0)) > 0.01) {
+        console.warn(`[API/Bookings] Discrepancy in gross total. Client sent: ${clientGrossTotalAmount}, Server calculated: ${calculatedGrossTotal}. Using server calculated.`);
+    }
+    const finalGrossAmount = calculatedGrossTotal;
+    const finalDiscountAmount = discountAppliedAmount && !isNaN(parseFloat(discountAppliedAmount)) ? parseFloat(discountAppliedAmount) : 0;
+    const finalNetAmount = Math.max(0, finalGrossAmount - finalDiscountAmount); // Ensure net amount is not negative
+
+    console.log(`[API/Bookings] Gross: ${finalGrossAmount}, Discount: ${finalDiscountAmount}, Net: ${finalNetAmount}`);
+    console.log("[API/Bookings] Constructed ticketDetails:", JSON.stringify(ticketDetails, null, 2));
 
     const booking = {
       eventId: eventObjectId,
       attendeeId: new ObjectId(session.user.id), 
       ticketDetails: ticketDetails, 
-      totalAmount: totalAmount, 
+      grossAmount: finalGrossAmount,
+      discountAppliedAmount: finalDiscountAmount,
+      promoCodeUsed: appliedPromoCode || null,
+      totalAmount: finalNetAmount, // This is the NET amount paid
       bookingDate: new Date(),
       paymentStatus: paymentStatusOverride || 'pending', 
       createdAt: new Date(),
@@ -90,17 +125,20 @@ export async function POST(request) {
     
     const result = await db.collection('bookings').insertOne(booking);
     const bookingId = result.insertedId;
+    console.log("[API/Bookings] Booking created with ID:", bookingId.toString());
     
-    const tickets = [];
+    const ticketsToInsert = [];
     for (const detail of ticketDetails) {
       for (let i = 0; i < detail.quantity; i++) {
-        tickets.push({
+        ticketsToInsert.push({
           bookingId: bookingId,
           eventId: eventObjectId,
           ticketTypeId: detail.ticketTypeId,
+          category: detail.category, 
           attendeeId: new ObjectId(session.user.id),
           status: (booking.paymentStatus === 'completed') ? 'Confirmed' : 'Reserved', 
           seatInfo: detail.seatInfo || null, 
+          pricePaid: detail.price, // Store original price of this ticket
           createdAt: new Date(),
           updatedAt: new Date()
         });
@@ -108,11 +146,13 @@ export async function POST(request) {
     }
     
     let ticketInsertResult;
-    if (tickets.length > 0) {
-      ticketInsertResult = await db.collection('tickets').insertMany(tickets);
+    if (ticketsToInsert.length > 0) {
+      ticketInsertResult = await db.collection('tickets').insertMany(ticketsToInsert);
+      console.log(`[API/Bookings] Inserted ${ticketInsertResult.insertedCount} tickets. Sample ticket:`, ticketsToInsert[0]);
     }
 
-    if (booking.paymentStatus === 'completed' && _detailedSelectedSeats && Array.isArray(_detailedSelectedSeats) && _detailedSelectedSeats.length > 0) {
+    if (booking.paymentStatus === 'completed' && hasDetailedSeats) {
+      console.log("[API/Bookings] Updating seat statuses to 'occupied'.");
       for (const seat of _detailedSelectedSeats) {
         if (seat.section && seat.row && seat.seat !== undefined) {
           const queryCriteria = {
@@ -123,15 +163,16 @@ export async function POST(request) {
           };
           try {
             const updateResult = await db.collection('seats').updateOne(queryCriteria, { $set: { status: 'occupied', updatedAt: new Date() } });
-            // Logging for seat update result can be added here if needed
+            console.log(`[API/Bookings] Seat update for ${seat.section}-${seat.row}${seat.seat}: Matched ${updateResult.matchedCount}, Modified ${updateResult.modifiedCount}`);
           } catch (updateError) {
-            console.error(`Error during seat update for Event ${eventId}, Seat ${seat.section}-${seat.row}${seat.seat}:`, updateError);
+            console.error(`[API/Bookings] Error during seat update for Event ${eventId}, Seat ${seat.section}-${seat.row}${seat.seat}:`, updateError);
           }
+        } else {
+            console.warn("[API/Bookings] Seat object missing section, row, or seat number for status update:", seat);
         }
       }
     }
     
-    // *** Remove user from waitlist upon successful purchase ***
     if (booking.paymentStatus === 'completed' && session?.user?.id) {
       try {
         const waitlistRemovalResult = await db.collection('waitlist').deleteOne({
@@ -139,21 +180,14 @@ export async function POST(request) {
           attendeeId: new ObjectId(session.user.id) 
         });
         if (waitlistRemovalResult.deletedCount > 0) {
-          console.log(`User ${session.user.id} removed from waitlist for event ${eventId} after successful booking.`);
-          // Optionally, update the waitlist entry status to 'converted' instead of deleting,
-          // await db.collection('waitlist').updateOne(
-          //   { eventId: eventObjectId, attendeeId: new ObjectId(session.user.id) },
-          //   { $set: { status: 'converted', updatedAt: new Date() } }
-          // );
+          console.log(`[API/Bookings] User ${session.user.id} removed from waitlist for event ${eventId}.`);
         }
       } catch (waitlistError) {
-        console.error(`Error removing user from waitlist after booking for event ${eventId}:`, waitlistError);
+        console.error(`[API/Bookings] Error removing user from waitlist for event ${eventId}:`, waitlistError);
       }
     }
-    // *** END OF WAITLIST REMOVAL LOGIC ***
 
-    if (bookingId && tickets.length > 0 && booking.paymentStatus === 'completed') {
-      // ... (existing email sending logic) ...
+    if (bookingId && ticketsToInsert.length > 0 && booking.paymentStatus === 'completed') {
       let attendeeEmail = session.user.email;
       let attendeeName = session.user.name || 'Valued Customer';
       if (!attendeeEmail || (session.user.name && !attendeeName)) {
@@ -167,34 +201,41 @@ export async function POST(request) {
             bookingId: bookingId.toString(),
             eventName: eventDetailsForEmail.name,
             eventDate: new Date(`${eventDetailsForEmail.date}T${eventDetailsForEmail.time || '00:00:00'}`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
-            tickets: ticketDetails.map(td => ({
+            tickets: ticketDetails.map(td => ({ 
                 category: td.category, quantity: td.quantity, price: td.price, seatInfo: td.seatInfo
             })),
-            totalAmount: totalAmount, attendeeName: attendeeName,
+            totalAmount: booking.totalAmount, // Use the net amount from the booking document
+            attendeeName: attendeeName,
         };
         try {
+            console.log("[API/Bookings] Attempting to send booking confirmation email to:", attendeeEmail);
             const { subject, html } = getBookingConfirmationEmail(emailData);
             await sendEmail({ to: attendeeEmail, subject, html });
+            console.log("[API/Bookings] Booking confirmation email sent successfully.");
         } catch (emailError) {
-            console.error('Failed to send booking confirmation email:', emailError);
+            console.error('[API/Bookings] Failed to send booking confirmation email:', emailError);
         }
+      } else {
+        console.warn("[API/Bookings] Attendee email not found, skipping confirmation email.");
       }
     }
     
     return NextResponse.json({
       message: 'Booking created successfully',
       bookingId: bookingId.toString(),
-      totalAmount: totalAmount,
+      totalAmount: booking.totalAmount, 
       ticketsCreated: ticketInsertResult ? ticketInsertResult.insertedCount : 0
     }, { status: 201 });
 
   } catch (error) {
-    console.error('Error creating booking:', error);
-    return NextResponse.json({ error: 'Failed to create booking', details: error.message }, { status: 500 });
+    console.error('[API/Bookings] CRITICAL ERROR in POST handler:', error);
+    return NextResponse.json({ 
+        error: 'Failed to create booking due to an internal server error.', 
+        details: error.message || "An unexpected error occurred." 
+    }, { status: 500 });
   }
 }
 
-// GET function (ensure it stringifies ObjectIds for client)
 export async function GET(request) {
   try {
     const session = await getServerSession(authOptions);
@@ -230,9 +271,6 @@ export async function GET(request) {
         delete query.attendeeId; 
       } else if (session.user.role === 'admin') {
         delete query.attendeeId; 
-        if (eventId) {
-            // query.eventId is already set
-        }
       }
     }
     
@@ -252,6 +290,11 @@ export async function GET(request) {
         _id: booking._id.toString(),
         eventId: booking.eventId.toString(),
         attendeeId: booking.attendeeId.toString(),
+        // Make sure all necessary fields are stringified if they are ObjectIds
+        grossAmount: booking.grossAmount,
+        discountAppliedAmount: booking.discountAppliedAmount,
+        promoCodeUsed: booking.promoCodeUsed,
+        totalAmount: booking.totalAmount, // This is net
         ticketDetails: sanitizedTicketDetails,
         event: event ? { ...event, _id: event._id.toString() } : { name: 'Unknown Event', date: '', time: '', posterUrl: null }
       };
@@ -259,7 +302,7 @@ export async function GET(request) {
     
     return NextResponse.json(bookingsWithEventDetails);
   } catch (error) {
-    console.error('Error fetching bookings:', error);
+    console.error('[API/Bookings] Error fetching bookings:', error);
     return NextResponse.json({ error: 'Failed to fetch bookings', details: error.message }, { status: 500 });
   }
 }

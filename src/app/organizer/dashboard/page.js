@@ -6,6 +6,7 @@ import { UserGroupIcon } from '@heroicons/react/24/outline';
 import AnalyticsCards from '@/components/dashboard/AnalyticsCards';
 import RevenueChart from '@/components/dashboard/RevenueChart';
 import EventsList from '@/components/dashboard/EventsList';
+import AnalyticsReports from '@/components/dashboard/AnalyticsReports';
 
 export default function OrganizerDashboard() {
   return (
@@ -35,7 +36,7 @@ export default function OrganizerDashboard() {
           <div className="space-y-8">
             <AnalyticsCards />
             <EventsList />
-            <RevenueChart />
+            <AnalyticsReports />
           </div>
         </div>
       </div>

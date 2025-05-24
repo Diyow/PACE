@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { toast } from 'react-hot-toast';
+import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import {
   ChartBarIcon,
@@ -297,13 +298,11 @@ const SeatOccupancyReportDisplay = ({ data, reportRef }) => {
                     <h5 className="text-md font-semibold text-gray-700 mb-2 text-center">Section Occupancy Rates</h5>
                     <div style={{ width: '100%', height: 300 }}>
                         <ResponsiveContainer>
-                            {/* Increased bottom margin from 40 to 70 to give more space for XAxis labels and Legend */}
                             <BarChart data={chartData} margin={{ top: 5, right: 20, left: -10, bottom: 70 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="name" angle={-30} textAnchor="end" fontSize={10} interval={0} tick={{ fill: '#6b7280' }} height={50} /> {/* Added height to XAxis to ensure labels are not cut off */}
+                                <XAxis dataKey="name" angle={-30} textAnchor="end" fontSize={10} interval={0} tick={{ fill: '#6b7280' }} height={50} />
                                 <YAxis label={{ value: 'Occupancy (%)', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#6b7280' }} fontSize={10} tick={{ fill: '#6b7280' }} />
                                 <Tooltip formatter={(value) => `${value.toFixed(2)}%`} />
-                                {/* Added marginTop to Legend's wrapperStyle for spacing */}
                                 <Legend wrapperStyle={{fontSize: "10px", marginTop: "20px"}}/>
                                 <Bar dataKey="occupancy" name="Occupancy Rate" >
                                      {chartData.map((entry, index) => (
@@ -460,8 +459,6 @@ const AnalyticsReports = () => {
     const payload = {};
 
     let effectiveReportType = reportType;
-    // The backend now handles 'ticketSales' by mapping it to 'attendance' logic
-    // So, we send the original 'ticketSales' or 'revenue' etc.
     payload.reportType = reportType;
 
 
@@ -548,7 +545,6 @@ const AnalyticsReports = () => {
           occupancyValue: parseFloat(s.occupancyRate) || 0 // Ensure occupancyValue exists
         }));
       }
-      // For ticketSales (mapped to 'attendance' in backend)
       if ((payload.reportType === 'ticketSales' || payload.reportType === 'attendance') && processedData?.ticketTypeBreakdown) {
           processedData.ticketTypeBreakdown = processedData.ticketTypeBreakdown.map(s => ({
               ...s,
@@ -605,7 +601,7 @@ const AnalyticsReports = () => {
             onclone: (document) => {
                 // Ensure text elements are fully visible, sometimes they get cut off
                 document.querySelectorAll('.recharts-text, .recharts-label').forEach(textElement => {
-                    textElement.style.overflow = 'visible'; // Or other appropriate style
+                    textElement.style.overflow = 'visible';
                 });
             }
         });
@@ -616,6 +612,7 @@ const AnalyticsReports = () => {
             container.style.height = '';
         });
 
+        // --- PDF Generation Logic ---
         const imgData = canvas.toDataURL('image/png');
         const pdf = new jsPDF({
             orientation: 'p', // portrait
@@ -650,6 +647,7 @@ const AnalyticsReports = () => {
         pdf.save(`${reportTitleForFile}_${reportDate}.pdf`);
 
         toast.success("PDF downloaded!", { id: toastId });
+        // --- End PDF Generation Logic ---
 
     } catch (error) {
         console.error("Error generating PDF:", error);
@@ -668,7 +666,6 @@ const AnalyticsReports = () => {
   const renderReportData = () => {
     if (!reportData) return null;
     if (reportData.error) return <p className="text-red-500 mt-4">{reportData.error}</p>;
-    // Use the originalReportType stored in reportData for consistent rendering
     const typeToRender = reportData.originalReportType || reportType;
 
 
@@ -725,11 +722,10 @@ const AnalyticsReports = () => {
             onChange={(e) => {
                 setReportType(e.target.value);
                 const newReportType = e.target.value;
-                // If the new report type is not event-specific, clear the selected event
                 if (!eventSpecificReportTypes.includes(newReportType)) {
                     setSelectedEventId('');
                 }
-                setReportData(null); // Clear previous report data when type changes
+                setReportData(null); 
             }}
             className="w-full p-2.5 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-sm"
           >
@@ -740,7 +736,6 @@ const AnalyticsReports = () => {
           </select>
         </div>
 
-        {/* Conditionally render Event Selector based on reportType */}
         {showEventSelector && (
           <div>
             <label htmlFor="selectedEventId" className="block text-sm font-medium text-gray-700 mb-1">
@@ -751,7 +746,7 @@ const AnalyticsReports = () => {
               value={selectedEventId}
               onChange={(e) => setSelectedEventId(e.target.value)}
               className="w-full p-2.5 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-sm"
-              disabled={!reportType} // Also disable if no report type is selected
+              disabled={!reportType}
             >
               <option value="">-- Select Specific Event --</option>
               {eventsForDropdown.length === 0 && <option value="" disabled>No specific events found</option>}
@@ -784,7 +779,7 @@ const AnalyticsReports = () => {
         </div>
 
         {periodOption === 'daily' && (
-          <div className={showEventSelector ? "lg:col-start-1" : "lg:col-start-2"}> {/* Adjust grid placement */}
+          <div className={showEventSelector ? "lg:col-start-1" : "lg:col-start-2"}>
             <label htmlFor="specificDate" className="block text-sm font-medium text-gray-700 mb-1">
               Select Date
             </label>
@@ -792,7 +787,7 @@ const AnalyticsReports = () => {
               type="date"
               id="specificDate"
               value={specificDate}
-              max={new Date().toISOString().split("T")[0]} // Prevent future dates
+              max={new Date().toISOString().split("T")[0]} 
               onChange={(e) => setSpecificDate(e.target.value)}
               className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-sm"
             />
@@ -801,7 +796,7 @@ const AnalyticsReports = () => {
 
         {periodOption === 'custom' && (
           <>
-            <div className={showEventSelector ? "" : "lg:col-start-2"}> {/* Adjust grid placement */}
+            <div className={showEventSelector ? "" : "lg:col-start-2"}> 
               <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-1">
                 Start Date
               </label>
@@ -822,15 +817,14 @@ const AnalyticsReports = () => {
                 type="date"
                 id="endDate"
                 value={customDateRange.endDate}
-                min={customDateRange.startDate} // Ensure end date is not before start date
-                max={new Date().toISOString().split("T")[0]} // Prevent future dates
+                min={customDateRange.startDate} 
+                max={new Date().toISOString().split("T")[0]}
                 onChange={(e) => setCustomDateRange(prev => ({ ...prev, endDate: e.target.value }))}
                 className="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-sky-500 focus:border-sky-500 text-sm"
               />
             </div>
           </>
         )}
-        {/* Generate Report Button - ensure it's always in a logical place */}
         <div className={`md:col-span-full ${showEventSelector ? 'lg:col-start-3' : 'lg:col-start-2 lg:col-span-1'} lg:self-end`}>
              <button
                 onClick={handleGenerateReport}
@@ -874,7 +868,6 @@ const AnalyticsReports = () => {
         </div>
       )}
 
-      {/* Placeholder when no report is generated yet */}
       {!isLoading && !error && !reportData && (
         <div className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500">
             <PresentationChartLineIcon className="h-16 w-16 mx-auto text-gray-300 mb-4"/>

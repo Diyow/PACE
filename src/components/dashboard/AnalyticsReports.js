@@ -4,7 +4,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { toast } from 'react-hot-toast';
-import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas-pro';
 import {
   ChartBarIcon,

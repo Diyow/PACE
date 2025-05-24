@@ -6,7 +6,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 // --- Configuration ---
 // The script will now rely on these being set in the environment
 // when the script is executed.
-const MONGODB_URI = 'mongodb+srv://diyow:XTyKPWaEfyBcKqIz@cluster0.l9h66py.mongodb.net/PACE_Database';
+const MONGODB_URI = 'a';
 // The database name is often part of the MONGODB_URI.
 // If not, you'd also need process.env.DATABASE_NAME and pass it to client.db(DATABASE_NAME).
 // For simplicity, this version assumes the database is in the URI.

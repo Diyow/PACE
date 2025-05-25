@@ -89,32 +89,36 @@ Follow these steps to get your development environment set up:
     * **Cloudinary**: Obtain your credentials from your [Cloudinary Dashboard](https://cloudinary.com/console).
     * **Email**: Configure with your chosen email provider's SMTP details.
 
-4. **Seed Initial Admin/User Data (Manual Process):**
+4.  **Seed Initial Admin/User Data (Manual Process):**
 
-   ***Why Manual?** The application UI currently allows admins to register organizers, but it does not have a direct sign-up page for creating the initial admin account. Attendee accounts are typically      created through a standard registration flow.
-   **Password Hashing Process:** You will first manually insert user data with a plain text password into MongoDB. Then, you'll run the hash-passwords.js script, which will connect to the database, find     these unhashed passwords, hash them, and update the user documents directly.
-   **Steps:**
-    * Connect to your MongoDB instance using a tool like MongoDB Compass or the mongo shell.
-    * Navigate to your database and the users collection.
-    * Manually insert a new document for the admin user. You'll need to define fields like name, email, role (e.g., "admin"), and password. For the password field, enter the desired plain text password.
-    * Example User Document Structure:
-    {
-      "name": "Admin User" // "Attendee User" ,
-      "email": "admin@example.com",
-      "password": "YourChosenPlainTextPassword", // The script will hash this
-      "role": "admin" // "attendee"
-    }
+    **Why Manual?**
+    The application UI currently allows admins to register organizers, but it does not have a direct sign-up page for creating the initial admin and attendee account.
+    **Password Hashing Process:**
+    You will first manually insert user data with a plain text password into MongoDB. Then, you'll run the `hash-passwords.js` script, which will connect to the database, find these unhashed passwords, hash them, and update the user documents directly.
 
+    **Steps:**
 
-  **Run the Hashing Script:** From your terminal, in the project's root directory, execute the hash-passwords.js script.
-  'node hash-passwords.js'
-    ```bash
-    node hash-passwords.js
-    ```
+    1.  **Connect to your MongoDB instance** using a tool like MongoDB Compass or the `mongo` shell.
+    2.  **Navigate to the `PACE_Database` database, and then select the `users` collection.** (This is where the user documents are stored).
+    3.  **Manually insert a new document for the admin/attendee user.** You'll need to define fields like `name`, `email`, `role` (e.g., "admin"/"attendee"), and `password`. For the `password` field, enter the desired plain text password.
 
-  This script will connect to MongoDB, find users with unhashed passwords (or as per its logic), hash their passwords, and save the changes back to the database.
-  **Verification (Optional):** After the script runs, you can check the user's document in MongoDB. The password field should now contain a hashed value, confirming the script worked as expected.
+        *Example User Document Structure (ensure it matches your Mongoose User model):*
+        ```json
+        {
+          "name": "Admin User" / "Attendee User",
+          "email": "admin@example.com",
+          "password": "YourChosenPlainTextPassword", // The script will hash this
+          "role": "admin" / "attendee"
+          // Add any other required fields from your User model
+        }
+        ```
+    4.  **Run the Hashing Script:** From your terminal, in the project's root directory, execute the `hash-passwords.js` script.
+        ```bash
+        node hash-passwords.js
+        ```
 
+        This script will connect to MongoDB, find users with unhashed passwords, hash their passwords, and save the changes back to the database.
+    5.  **Verification (Optional):** After the script runs, you can check the user's document in MongoDB. The `password` field should now contain a hashed value, confirming the script worked as expected.
 
 5.  **Run the development server:**
     ```bash

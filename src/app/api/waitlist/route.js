@@ -1,4 +1,3 @@
-// src/app/api/waitlist/route.js
 import { NextResponse } from 'next/server';
 import { connectToDatabase } from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
@@ -152,11 +151,11 @@ export async function GET(request) {
     }
 
     // Case 2: User fetching all THEIR waitlist entries (no eventId in query from WaitlistSection.js)
-    if (!eventId && session.user.role === 'user') {
+    if (!eventId && ['user', 'attendee'].includes(session.user.role)) {
       query = { attendeeId: new ObjectId(session.user.id) };
     } 
     // Case 3: Organizer/Admin fetching for a specific event (eventId is present, checkStatus is not true)
-    else if (eventId && ObjectId.isValid(eventId) && ['organizer', 'admin'].includes(session.user.role)) {
+    else if (eventId && ObjectId.isValid(eventId) && ['organizer', 'admin', 'attendee'].includes(session.user.role)) {
       const eventObjectId = new ObjectId(eventId);
       if (session.user.role === 'organizer') {
         const event = await db.collection('events').findOne({ _id: eventObjectId, organizerId: new ObjectId(session.user.id) });

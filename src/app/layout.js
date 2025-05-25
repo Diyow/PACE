@@ -1,4 +1,5 @@
 import { Toaster } from 'react-hot-toast';
+import { SpeedInsights } from "@vercel/speed-insights/next"
 import Headers from "../components/Headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -30,6 +31,7 @@ export default function RootLayout({ children }) {
           <Toaster position="bottom-right" reverseOrder={false} />
           <Headers />
           {children}
+          <SpeedInsights />
           <Footer/>
         </Providers>
       </body>

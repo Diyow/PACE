@@ -65,12 +65,6 @@ export default function EventsList() {
     return new Date(dateString).toLocaleDateString();
   };
 
-  // Calculate revenue (this is a placeholder - adjust based on your actual data structure)
-  const calculateRevenue = (ticketsSold) => {
-    const ticketPrice = 50; // Placeholder price - adjust as needed
-    return (ticketsSold * ticketPrice).toLocaleString();
-  };
-
   // Handle edit event
   const handleEditEvent = (eventId) => {
     router.push(`/organizer/edit-event/${eventId}`);
@@ -189,8 +183,8 @@ export default function EventsList() {
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">{event.ticketsSold || 0} tickets sold</p>
-                    <p className="text-sm text-gray-500">${calculateRevenue(event.ticketsSold || 0)} revenue</p>
+                    <p className="text-sm font-medium text-gray-900">{event.totalTicketsSold || 0} tickets sold</p>
+                    <p className="text-sm text-gray-500">${(event.totalRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} revenue</p>
                   </div>
                   <div className="relative">
                     <button 

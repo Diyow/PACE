@@ -251,13 +251,28 @@ export async function GET(request) {
       .sort(sortCriteria) 
       .toArray();
 
-    // Convert ObjectIds to strings for client
-    const sanitizedEvents = events.map(event => ({
-        ...event,
-        _id: event._id.toString(),
-        organizerId: event.organizerId ? event.organizerId.toString() : null,
-        promoCodeIds: event.promoCodeIds ? event.promoCodeIds.map(id => id.toString()) : [],
-        // ticketCategories and seatingLayout are already in suitable format or handled by frontend
+    const sanitizedEvents = await Promise.all(events.map(async (event) => {
+        const totalTicketsSold = await db.collection('tickets').countDocuments({
+            eventId: event._id,
+            status: 'Confirmed'
+        });
+
+        const revenueResult = await db.collection('bookings').aggregate([
+            { $match: { eventId: event._id, paymentStatus: 'completed' } },
+            { $group: { _id: null, totalRevenue: { $sum: '$totalAmount' } } }
+        ]).toArray();
+        const totalRevenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
+        return {
+            ...event,
+            _id: event._id.toString(),
+            organizerId: event.organizerId ? event.organizerId.toString() : null,
+            promoCodeIds: event.promoCodeIds ? event.promoCodeIds.map(id => id.toString()) : [],
+
+            totalTicketsSold: totalTicketsSold,
+            totalRevenue: totalRevenue,
+
+        };
     }));
 
 

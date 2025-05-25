@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react'; // Import useEffect
+import React, { useState, useEffect } from 'react';
 import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link'
@@ -11,9 +11,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const router = useRouter();
-  const { data: session, status } = useSession(); // Get session and status
+  const { data: session, status } = useSession();
 
-  // useEffect to handle redirection after session status changes
+
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.role) {
       const role = session.user.role;
@@ -22,12 +22,8 @@ export default function LoginPage() {
       } else if (role === 'organizer') {
         router.push('/organizer/dashboard');
       } else {
-        // If authenticated but not admin/organizer, or if coming from a different page
-        // and already logged in, redirect to home.
-        // You might want to check router.pathname if you only want this on initial login.
-        if (router.pathname === '/login') { // Or a more specific check if needed
             router.push('/');
-        }
+      
       }
     }
   }, [status, session, router]); // Dependencies for the effect

@@ -12,6 +12,7 @@
     "@headlessui/react": "^2.2.2",
     "@heroicons/react": "^2.2.0",
     "@react-spring/web": "^10.0.0",
+    "@vercel/speed-insights": "^1.2.0",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.6.1",

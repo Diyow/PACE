@@ -1,4 +1,3 @@
-// src/app/admin/dashboard/page.js
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -119,7 +118,7 @@ export default function AdminDashboard() {
         <div className="bg-gradient-to-r from-sky-600 to-blue-600 text-white p-8 shadow-lg">
           <div className="max-w-7xl mx-auto">
             <h1 className="text-4xl font-bold mb-2">Administrator Dashboard</h1>
-            <p className="text-sky-100">Welcome back! Here's what's happening with your events platform.</p>
+            <p className="text-sky-100">Welcome back! Here&apos;s what&apos;s happening with your events platform.</p>
           </div>
         </div>
 

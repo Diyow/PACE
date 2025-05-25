@@ -4,6 +4,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import TicketCard from './TicketCard';
+import Link from 'next/link';
 import { ClockIcon, CalendarDaysIcon, TicketIcon as TabTicketIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'; // Added icons for better UI
 
 function MyTicketsSection() {
@@ -98,7 +99,7 @@ function MyTicketsSection() {
             <TabTicketIcon className="h-12 w-12 text-sky-400 mb-4" />
             <h3 className="text-xl font-semibold text-gray-700 mb-2">View Your Tickets</h3>
             <p className="text-gray-500 mb-6 max-w-md">
-              Please <a href="/login" className="text-sky-600 hover:text-sky-700 font-medium underline">log in</a> to see your purchased event tickets and manage your bookings.
+              Please <Link href="/login" className="text-sky-600 hover:text-sky-700 font-medium underline">log in</Link> to see your purchased event tickets and manage your bookings.
             </p>
           </div>
         </div>

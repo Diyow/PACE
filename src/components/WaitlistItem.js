@@ -1,15 +1,14 @@
-// src/components/WaitlistItem.js
 "use client";
 
 import React, { useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { PhotoIcon, CalendarDaysIcon, ClockIcon } from '@heroicons/react/24/outline'; // Added icons
+import { PhotoIcon, CalendarDaysIcon, ClockIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
+import Image from 'next/image';
 
 function WaitlistItem({ item, onLeaveSuccess }) {
   const [isLeaving, setIsLeaving] = useState(false);
 
-  // Extract event details from the item (assuming API populates item.event)
   const eventName = item.event?.name || 'Event Name Not Available';
   let eventDateStr = 'Date N/A';
   let eventTimeStr = '';
@@ -27,7 +26,7 @@ function WaitlistItem({ item, onLeaveSuccess }) {
         }
     } catch(e) {
         console.error("Error formatting date for waitlist item:", item.event.date, e);
-        eventDateStr = item.event.date; // Fallback
+        eventDateStr = item.event.date;
     }
   }
   
@@ -41,13 +40,13 @@ function WaitlistItem({ item, onLeaveSuccess }) {
         toast.error("Event ID missing, cannot leave waitlist.");
         return;
     }
+
     if (!confirm(`Are you sure you want to leave the waitlist for "${eventName}"?`)) {
         return;
     }
 
     setIsLeaving(true);
     try {
-      // The DELETE API uses session to identify the user, eventId is needed in query
       const response = await fetch(`/api/waitlist?eventId=${item.eventId}`, {
         method: 'DELETE',
       });
@@ -55,8 +54,8 @@ function WaitlistItem({ item, onLeaveSuccess }) {
       if (!response.ok) {
         throw new Error(data.error || 'Failed to leave waitlist.');
       }
-      onLeaveSuccess(); // This will call handleLeaveWaitlistSuccess in WaitlistSection
-      // Toast success is handled by the parent
+      onLeaveSuccess(); 
+
     } catch (err) {
       console.error('Error leaving waitlist:', err);
       toast.error(err.message);
@@ -69,10 +68,16 @@ function WaitlistItem({ item, onLeaveSuccess }) {
     <div className="flex flex-col sm:flex-row items-center justify-between bg-white rounded-xl shadow-sm border border-gray-200 p-4 hover:border-sky-200 transition-all group hover:shadow-md">
       <div className="flex items-center gap-4 w-full sm:w-auto">
         <Link href={`/events/${item.eventId}`} className="shrink-0">
-          <div className="w-20 h-20 bg-gradient-to-br from-sky-100 to-blue-100 rounded-lg flex items-center justify-center group-hover:from-sky-200 group-hover:to-blue-200 transition-colors">
-            {/* Assuming item.event.posterUrl might exist in the future via API population */}
+
+          <div className="relative w-20 h-20 bg-gradient-to-br from-sky-100 to-blue-100 rounded-lg flex items-center justify-center group-hover:from-sky-200 group-hover:to-blue-200 transition-colors overflow-hidden">
             {item.event?.posterUrl ? (
-                 <img src={item.event.posterUrl} alt={`${eventName} poster`} className="w-full h-full object-cover rounded-lg" />
+                 <Image 
+                    src={item.event.posterUrl} 
+                    alt={`${eventName} poster`} 
+                    fill
+                    style={{ objectFit: 'cover' }}
+                    sizes="(max-width: 640px) 80px, 80px" 
+                 />
             ) : (
                 <PhotoIcon className="h-10 w-10 text-sky-400 group-hover:text-sky-500 transition-colors" />
             )}

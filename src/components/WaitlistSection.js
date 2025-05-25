@@ -1,10 +1,10 @@
-// src/components/WaitlistSection.js
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
 import WaitlistItem from './WaitlistItem';
 import { useSession } from 'next-auth/react';
 import { toast } from 'react-hot-toast';
+import Link from 'next/link';
 import { ClockIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
 
@@ -73,7 +73,7 @@ function WaitlistSection() {
                 <ClockIcon className="h-12 w-12 text-sky-400 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-700 mb-2">Your Waitlist</h3>
                 <p className="text-gray-500 mb-4">
-                  <a href="/login" className="text-sky-600 hover:text-sky-700 font-medium underline">Log in</a> to view and manage events you're waitlisted for.
+                  <Link href="/login" className="text-sky-600 hover:text-sky-700 font-medium underline">Log in</Link> to view and manage events you&apos;re waitlisted for.
                 </p>
             </div>
         </div>
@@ -111,12 +111,12 @@ function WaitlistSection() {
             <div className="text-center py-12 bg-white p-8 rounded-xl shadow-sm border border-gray-200">
                 <ClockIcon className="h-12 w-12 text-sky-400 mx-auto mb-4" />
                 <p className="text-lg text-gray-500">You are not currently on any waitlists.</p>
-                <a 
+                <Link 
                     href="/#events" 
                     className="mt-4 inline-block px-6 py-2 bg-sky-500 text-white text-sm font-medium rounded-lg hover:bg-sky-600 transition-colors"
                 >
                     Explore Events
-                </a>
+                </Link>
             </div>
         )}
         {!isLoading && !error && actualWaitlistItems.length > 0 && (

@@ -1,11 +1,11 @@
-// src/app/organizer/edit-event/[eventId]/page.js
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeftIcon, EyeIcon, PhotoIcon, ArrowPathIcon, TicketIcon,
+  ArrowLeftIcon, EyeIcon, PhotoIcon as HeroPhotoIcon, ArrowPathIcon, TicketIcon,
   KeyIcon, MapIcon, DocumentTextIcon, BellAlertIcon, UsersIcon as WaitlistUsersIcon,
 } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 import RoleGuard from '@/components/RoleGuard';
 import EventBasicInfo from '@/components/organizer/EventBasicInfo';
 import TicketTypesPricing from '@/components/organizer/TicketTypesPricing';
@@ -100,11 +100,10 @@ const EditEventPage = () => {
         })));
       }
       
-      // Fetch waitlist stats - ensure this call gets an array
-      const waitlistRes = await fetch(`/api/waitlist?eventId=${currentEventId}`); // NO checkStatus=true here
+      const waitlistRes = await fetch(`/api/waitlist?eventId=${currentEventId}`); 
       if (waitlistRes.ok) {
           const waitlistData = await waitlistRes.json();
-          if (Array.isArray(waitlistData)) { // ***** ADDED CHECK *****
+          if (Array.isArray(waitlistData)) { 
             setWaitlistStats({
                 count: waitlistData.length,
                 notified: waitlistData.filter(w => w.status === 'notified').length,
@@ -143,11 +142,10 @@ const EditEventPage = () => {
     if (eventId && !fetchLoading && activeTab === 'waitlist') {
       const fetchStatsOnly = async () => {
         try {
-          // This call should get an array for the organizer
-          const waitlistRes = await fetch(`/api/waitlist?eventId=${eventId}`); // NO checkStatus=true
+          const waitlistRes = await fetch(`/api/waitlist?eventId=${eventId}`); 
           if (waitlistRes.ok) {
             const waitlistData = await waitlistRes.json();
-            if (Array.isArray(waitlistData)) { // ***** ADDED CHECK *****
+            if (Array.isArray(waitlistData)) { 
                 setWaitlistStats({
                 count: waitlistData.length,
                 notified: waitlistData.filter(w => w.status === 'notified').length,
@@ -170,13 +168,19 @@ const EditEventPage = () => {
     }
   }, [activeTab, eventId, fetchLoading]);
 
-  // ... (rest of the handler functions: handleBasicInfoInputChange, handlePosterChange, etc. remain the same)
   const handleBasicInfoInputChange = (event) => setEventData(prev => ({ ...prev, [event.target.name]: event.target.value }));
   const handlePosterChange = (event) => {
     const file = event.target.files[0];
     if (file) { setEventPoster(file); setPreviewUrl(URL.createObjectURL(file)); }
   };
-  const handleRemovePoster = () => { setEventPoster(null); setPreviewUrl(null); };
+  const handleRemovePoster = () => { 
+    setEventPoster(null); 
+    setPreviewUrl(null); 
+    const fileInput = document.getElementById('poster-upload'); // Assuming EventBasicInfo has this ID
+    if (fileInput) {
+      fileInput.value = "";
+    }
+  };
   const handleNewTicketTypeChange = (e) => setNewTicketType(prev => ({ ...prev, [e.target.name]: e.target.value }));
   
   const handleAddOrUpdateTicketType = () => { 
@@ -287,7 +291,6 @@ const EditEventPage = () => {
       else if (responseData.event && !responseData.event.posterUrl) { setInitialPosterUrl(null); setPreviewUrl(null); }
       
       await fetchAllEventPageData(eventId); 
-      // router.push('/organizer/dashboard'); // Optionally redirect
     } catch (error) {
       console.error('Error saving configurations:', error); toast.error(error.message);
     } finally {
@@ -315,7 +318,7 @@ const EditEventPage = () => {
             throw new Error(data.error || data.message || "Failed to trigger waitlist notification.");
         }
         toast.success(data.message || "Waitlist notification process initiated.");
-        await fetchAllEventPageData(eventId); // Refresh stats
+        await fetchAllEventPageData(eventId); 
     } catch (error) {
         console.error("Error notifying waitlist:", error);
         toast.error(error.message);
@@ -418,10 +421,26 @@ const EditEventPage = () => {
                 <div className="bg-white rounded-xl shadow-md p-6 overflow-hidden">
                   <div className="flex items-center mb-4"> <EyeIcon className="h-6 w-6 text-sky-500 mr-2" /> <h3 className="text-xl font-medium text-gray-900">Event Preview</h3> </div>
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-200 hover:shadow-md hover:border-sky-100 transform hover:scale-[1.02]"> 
-                    <div className="aspect-[4/3] bg-gradient-to-br from-sky-50 to-blue-50 relative"> 
-                      {previewUrl ? ( <img src={previewUrl} alt="Event poster preview" className="w-full h-full object-cover" /> ) : 
-                      ( <div className="absolute inset-0 flex items-center justify-center text-gray-400 transition-colors"> <div className="text-center"> <PhotoIcon className="h-12 w-12 mx-auto mb-2" /> <p>Event Poster</p> </div> </div> )}
+                    {/* === IMAGE FIX START === */}
+                    <div className="aspect-[4/3] bg-gradient-to-br from-sky-50 to-blue-50 relative overflow-hidden rounded-t-xl"> {/* Added rounded-t-xl and overflow-hidden to parent */}
+                      {previewUrl ? ( 
+                        <Image 
+                          src={previewUrl} 
+                          alt="Event poster preview" 
+                          fill
+                          style={{ objectFit: 'cover' }}
+                          priority // Consider adding if it's an LCP element
+                        /> 
+                      ) : ( 
+                        <div className="absolute inset-0 flex items-center justify-center text-gray-400 transition-colors"> 
+                          <div className="text-center"> 
+                            <HeroPhotoIcon className="h-12 w-12 mx-auto mb-2" /> {/* Using HeroPhotoIcon */}
+                            <p>Event Poster</p> 
+                          </div> 
+                        </div> 
+                      )}
                     </div>
+                    {/* === IMAGE FIX END === */}
                     <div className="p-5">
                       <h3 className="text-lg font-medium text-gray-900 transition-colors"> {eventData.eventName || (eventData.name || 'Event Name')} </h3>
                       <p className="text-sm text-gray-500 mt-2"> {formattedDate || 'Event Date'} {eventData.time ? `at ${eventData.time}` : ''} </p>

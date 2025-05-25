@@ -1,5 +1,6 @@
 'use client';
 import React from 'react';
+import Image from 'next/image';
 import {
   CalendarIcon,
   ClockIcon,
@@ -12,7 +13,6 @@ const EventBasicInfo = ({ eventData, onInputChange, onPosterChange, previewUrl, 
 
   return (
     <div className="space-y-6">
-      {/* Event Name */}
       <div>
         <label htmlFor="eventName" className="block text-sm font-medium text-gray-700 mb-1">
           Event Name
@@ -31,7 +31,6 @@ const EventBasicInfo = ({ eventData, onInputChange, onPosterChange, previewUrl, 
         </div>
       </div>
 
-      {/* Date and Time */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
@@ -74,7 +73,6 @@ const EventBasicInfo = ({ eventData, onInputChange, onPosterChange, previewUrl, 
         </div>
       </div>
 
-      {/* Description */}
       <div>
         <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
           Description
@@ -95,7 +93,6 @@ const EventBasicInfo = ({ eventData, onInputChange, onPosterChange, previewUrl, 
         </div>
       </div>
 
-      {/* Event Poster */}
       <div>
         <label htmlFor="eventPoster" className="block text-sm font-medium text-gray-700 mb-1">
           Event Poster <span className="text-gray-500 text-xs italic ml-1">(optional)</span>
@@ -103,11 +100,14 @@ const EventBasicInfo = ({ eventData, onInputChange, onPosterChange, previewUrl, 
         <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed border-gray-300 rounded-md hover:border-sky-300 transition-colors">
           <div className="space-y-1 text-center">
             {previewUrl ? (
-              <div className="relative">
-                <img
+              <div className="relative mx-auto h-48 w-auto flex justify-center">
+                <Image
                   src={previewUrl}
                   alt="Event poster preview"
-                  className="mx-auto h-48 object-contain rounded-md"
+                  width={200}
+                  height={192}
+                  style={{ objectFit: 'contain', height: '12rem', width: 'auto' }}
+                  className="rounded-md"
                 />
                 <button
                   type="button"

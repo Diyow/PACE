@@ -32,7 +32,7 @@ export default function Headers() {
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-8">
         {/* Left: App Name */}
         <div className="flex items-center gap-2">
-          <a href="/" className="font-bold text-2xl tracking-tight text-sky-700 hover:text-sky-900 transition-colors">PACE</a>
+          <Link href="/" className="font-bold text-2xl tracking-tight text-sky-700 hover:text-sky-900 transition-colors">PACE</Link>
         </div>
         {/* Right: Navigation + User */}
         <div className="flex items-center gap-28">

@@ -1,17 +1,17 @@
-// src/app/organizer/create-event/page.js
 'use client';
 import React, { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeftIcon,
   EyeIcon,
-  PhotoIcon,
+  PhotoIcon as HeroPhotoIcon,
   ArrowPathIcon,
   TicketIcon,
   KeyIcon,
   MapIcon,
   DocumentTextIcon,
 } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 import RoleGuard from '@/components/RoleGuard';
 import EventBasicInfo from '@/components/organizer/EventBasicInfo';
 import TicketTypesPricing from '@/components/organizer/TicketTypesPricing';
@@ -41,7 +41,7 @@ const CreateEventPage = () => {
   const [sectionTicketTypeMap, setSectionTicketTypeMap] = useState(() => {
     const initialMap = {};
     predefinedSeatingLayout.forEach(section => {
-      initialMap[section.section] = ''; 
+      initialMap[section.section] = '';
     });
     return initialMap;
   });
@@ -66,7 +66,7 @@ const CreateEventPage = () => {
   const inputClass = "w-full rounded-md border-gray-300 shadow-sm focus:border-sky-500 focus:ring-sky-500 transition-colors py-2 px-3";
   const labelClass = "block text-sm font-medium text-gray-700 mb-1";
 
-  const formattedDate = eventData.date ? new Date(eventData.date).toLocaleDateString('en-US', {
+  const formattedDate = eventData.date ? new Date(eventData.date  + 'T00:00:00').toLocaleDateString('en-US', { // Ensure correct date parsing by adding time
     year: 'numeric',
     month: 'short',
     day: 'numeric'
@@ -89,6 +89,11 @@ const CreateEventPage = () => {
   const handleRemovePoster = () => {
     setEventPoster(null);
     setPreviewUrl(null);
+    // If there's an input element for file, clear its value
+    const fileInput = document.getElementById('poster-upload'); // Assuming EventBasicInfo has this ID
+    if (fileInput) {
+      fileInput.value = "";
+    }
   };
 
   const handleNewTicketTypeChange = (e) => {
@@ -238,19 +243,16 @@ const CreateEventPage = () => {
       formData.append('poster', eventPoster);
     }
 
-    // --- Start of refined logic ---
     let isDefaultCategoryReferencedBySeating = false;
     const finalSeatingLayoutAssignments = predefinedSeatingLayout.map(section => {
       const userAssignedCategoryName = sectionTicketTypeMap[section.section]; 
-
       let finalAssignedCategoryName;
       if (userAssignedCategoryName && userAssignedCategoryName !== '') {
         finalAssignedCategoryName = userAssignedCategoryName;
       } else {
         finalAssignedCategoryName = DEFAULT_TICKET_CATEGORY_NAME;
-        isDefaultCategoryReferencedBySeating = true; // Mark that the default is needed
+        isDefaultCategoryReferencedBySeating = true; 
       }
-
       return {
         section: section.section,
         rows: section.rows,
@@ -267,21 +269,17 @@ const CreateEventPage = () => {
     }));
 
     if (userDefinedTicketTypes.length === 0) {
-      // Case 1: No user-defined types. All sections use default. Payload is just default.
       finalTicketCategoriesForPayload = [{ category: DEFAULT_TICKET_CATEGORY_NAME, price: parseFloat(DEFAULT_TICKET_PRICE) }];
     } else {
-      // Case 2: User defined some types.
       finalTicketCategoriesForPayload = [...userDefinedTicketTypes];
       const defaultIsDefinedByUser = userDefinedTicketTypes.some(
         tt => tt.category.toLowerCase() === DEFAULT_TICKET_CATEGORY_NAME.toLowerCase()
       );
-      // Add default type to payload ONLY if it's referenced by seating AND not already defined by user.
       if (isDefaultCategoryReferencedBySeating && !defaultIsDefinedByUser) {
         finalTicketCategoriesForPayload.push({ category: DEFAULT_TICKET_CATEGORY_NAME, price: parseFloat(DEFAULT_TICKET_PRICE) });
       }
     }
     formData.append('ticketCategories', JSON.stringify(finalTicketCategoriesForPayload));
-    // --- End of refined logic ---
 
     const sanitizedPromoCodes = promoCodes.map(({ id, _id, ...rest }) => rest);
     formData.append('promoCodes', JSON.stringify(sanitizedPromoCodes));
@@ -416,18 +414,26 @@ const CreateEventPage = () => {
                     <h3 className="text-xl font-medium text-gray-900">Event Preview</h3>
                   </div>
                   <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    {/* === IMAGE FIX START === */}
                     <div className="aspect-[4/3] bg-gradient-to-br from-sky-50 to-blue-50 relative">
                       {previewUrl ? (
-                        <img src={previewUrl} alt="Event poster preview" className="w-full h-full object-cover" />
+                        <Image 
+                            src={previewUrl} 
+                            alt="Event poster preview" 
+                            fill
+                            style={{ objectFit: 'cover' }}
+                            priority // Consider adding if it's an LCP element
+                        />
                       ) : (
                         <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                           <div className="text-center">
-                            <PhotoIcon className="h-12 w-12 mx-auto mb-2" />
+                            <HeroPhotoIcon className="h-12 w-12 mx-auto mb-2" /> {/* Using HeroPhotoIcon */}
                             <p>Event Poster</p>
                           </div>
                         </div>
                       )}
                     </div>
+                    {/* === IMAGE FIX END === */}
                     <div className="p-5">
                       <h3 className="text-lg font-medium text-gray-900">{eventData.eventName || 'Event Name'}</h3>
                       <p className="text-sm text-gray-500 mt-2">

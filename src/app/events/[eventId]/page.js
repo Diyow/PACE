@@ -1,4 +1,3 @@
-// src/app/events/[eventId]/page.js
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -10,6 +9,7 @@ import {
   UsersIcon, BuildingStorefrontIcon, TagIcon, UserPlusIcon, UserMinusIcon,
   EnvelopeIcon, ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
+import Image from 'next/image';
 import { toast } from 'react-hot-toast';
 
 const EventDetailPage = () => {
@@ -307,7 +307,26 @@ const EventDetailPage = () => {
               {eventDate && event.time && ( <div className="flex items-center"> <ClockIcon className="h-5 w-5 mr-1.5 opacity-80" /> <span>{eventDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span> </div> )}
               <div className="flex items-center"> <MapPinIcon className="h-5 w-5 mr-1.5 opacity-80" /> <span>Help Auditorium</span> </div> {/* Placeholder location */}
             </div>
-            {event.posterUrl ? <img src={event.posterUrl} alt={`${event.name} Poster`} className="w-full h-64 sm:h-80 md:h-96 object-cover rounded-lg mb-6 shadow-lg"/> : <div className="w-full h-64 sm:h-80 md:h-96 bg-gradient-to-br from-sky-200 to-blue-200 rounded-lg mb-6 flex items-center justify-center shadow-lg"> <PhotoIcon className="h-24 w-24 text-sky-500 opacity-70" /> </div> }
+            
+            {/* === IMAGE FIX START === */}
+            {event.posterUrl ? (
+              <div className="relative w-full h-64 sm:h-80 md:h-96 rounded-lg mb-6 shadow-lg overflow-hidden">
+                <Image 
+                  src={event.posterUrl} 
+                  alt={`${event.name} Poster`} 
+                  fill 
+                  style={{ objectFit: 'cover' }}
+                  priority // Consider adding priority if this is an LCP element
+                  // sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" // Optional: for more optimization
+                />
+              </div>
+            ) : (
+              <div className="w-full h-64 sm:h-80 md:h-96 bg-gradient-to-br from-sky-200 to-blue-200 rounded-lg mb-6 flex items-center justify-center shadow-lg">
+                <PhotoIcon className="h-24 w-24 text-sky-500 opacity-70" />
+              </div>
+            )}
+            {/* === IMAGE FIX END === */}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                 <div className="bg-sky-50 p-4 rounded-lg border border-sky-100">
                     <p className="text-xs text-sky-600 font-medium uppercase tracking-wider">Tickets Available</p>
@@ -392,7 +411,7 @@ const EventDetailPage = () => {
                      </div>
                      {appliedDiscountInfo && (
                        <p className="mt-2 text-xs text-green-600">
-                         Code "{appliedDiscountInfo.code}" applied: -${appliedDiscountInfo.amount.toFixed(2)}
+                         Code &quot;{appliedDiscountInfo.code}&quot; applied: -${appliedDiscountInfo.amount.toFixed(2)}
                        </p>
                      )}
                    </div>
@@ -430,7 +449,7 @@ const EventDetailPage = () => {
         <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4 transition-opacity duration-300 ease-in-out">
           <div className="bg-white p-6 sm:p-8 rounded-xl shadow-2xl w-full max-w-md transform transition-all duration-300 ease-in-out scale-100">
             <h3 className="text-xl font-semibold text-sky-800 mb-4">Join Waitlist for {event?.name}</h3>
-            <p className="text-sm text-gray-600 mb-6">Enter your contact details. We'll notify you if tickets become available.</p>
+            <p className="text-sm text-gray-600 mb-6">Enter your contact details. We&apos;ll notify you if tickets become available.</p>
             <div className="mb-4">
               <label htmlFor="waitlistName" className="block text-sm font-medium text-gray-700 mb-1">Full Name (Optional)</label>
               <input type="text" id="waitlistName" value={waitlistName} onChange={(e) => setWaitlistName(e.target.value)}

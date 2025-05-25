@@ -675,7 +675,7 @@ const AnalyticsReports = () => {
       case 'seatOccupancy': return <SeatOccupancyReportDisplay data={reportData} reportRef={reportContentRef} />;
       case 'auditoriumUsage': return <AuditoriumUsageReportDisplay data={reportData} reportRef={reportContentRef} />;
       default:
-        return <p className="mt-4">Report display for '{typeToRender}' not implemented or data mismatch.</p>;
+        return <p className="mt-4">Report display for &apos;{typeToRender}&apos; not implemented or data mismatch.</p>;
     }
   };
 
@@ -871,7 +871,7 @@ const AnalyticsReports = () => {
       {!isLoading && !error && !reportData && (
         <div className="mt-8 pt-6 border-t border-gray-200 text-center text-gray-500">
             <PresentationChartLineIcon className="h-16 w-16 mx-auto text-gray-300 mb-4"/>
-            <p className="text-lg">Select your report criteria and click "Generate Report".</p>
+            <p className="text-lg">Select your report criteria and click &quot;Generate Report&quot;.</p>
             <p className="text-sm">Your generated report will appear here.</p>
         </div>
       )}

@@ -16,7 +16,7 @@ export default function OrganizerDashboard() {
         <div className="bg-gradient-to-r from-sky-600 to-blue-600 text-white p-8 shadow-lg">
           <div className="max-w-7xl mx-auto">
             <h1 className="text-4xl font-bold mb-2">Event Organizer Dashboard</h1>
-            <p className="text-sky-100">Welcome back! Here's what's happening with your events.</p>
+            <p className="text-sky-100">Welcome back! Here&apos;s what&apos;s happening with your events.</p>
           </div>
         </div>
 

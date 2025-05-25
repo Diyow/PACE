@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'; // Import useEffect
 import { signIn, useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link'
 import { UserIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 
 export default function LoginPage() {

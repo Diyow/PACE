@@ -1,11 +1,12 @@
-// src/app/seat-selection/page.js
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
+import { ArrowPathIcon } from '@heroicons/react/24/outline'; // For loading spinner
 
-const SeatSelectionPage = () => {
+// This component contains the core logic and UI for the seat selection page
+function SeatSelectionClientLogic() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -18,7 +19,7 @@ const SeatSelectionPage = () => {
   const [seatStatuses, setSeatStatuses] = useState({});
   const [ticketCategories, setTicketCategories] = useState([]);
 
-  const [selectedSeats, setSelectedSeats] = useState([]); // Array of { section, row, seat, price, category, ticketTypeId }
+  const [selectedSeats, setSelectedSeats] = useState([]);
   const [totalPrice, setTotalPrice] = useState(0);
   const [activeSectionName, setActiveSectionName] = useState(null);
 
@@ -45,12 +46,8 @@ const SeatSelectionPage = () => {
         setApiSeatingLayout(eventData.seatingLayout);
       }
 
-      // Ensure ticketCategories have an _id, map if necessary from eventData.ticketCategories
-      // Your event.ticketCategories in the event document should have _id if they are distinct types,
-      // or you derive them from a separate ticketTypes collection.
-      // For now, assuming eventData.ticketCategories contains items like { _id, category, price }
       console.log("Fetched eventData.ticketCategories:", eventData.ticketCategories);
-      setTicketCategories(eventData.ticketCategories?.map(tc => ({...tc, id: tc._id || tc.category})) || []); // Use _id as id, fallback to category if _id is missing
+      setTicketCategories(eventData.ticketCategories?.map(tc => ({...tc, id: tc._id || tc.category})) || []);
 
       const seatsStatusRes = await fetch(`/api/seats?eventId=${eventId}`);
       if (!seatsStatusRes.ok) throw new Error(`Failed to fetch seat statuses: ${seatsStatusRes.statusText} (status: ${seatsStatusRes.status})`);
@@ -87,21 +84,21 @@ const SeatSelectionPage = () => {
   const getSeatDetails = (sectionName) => {
     const sectionConfig = apiSeatingLayout.find(s => s.section === sectionName);
     let price = representativePricePerSeat;
-    let categoryName = 'Standard'; // Default category name
-    let ticketTypeId = null; // Default ticketTypeId
+    let categoryName = 'Standard';
+    let ticketTypeId = null;
 
     if (sectionConfig && sectionConfig.assignedCategoryName) {
         const categoryInfo = ticketCategories.find(tc => tc.category === sectionConfig.assignedCategoryName);
         if (categoryInfo) {
             price = parseFloat(categoryInfo.price);
             categoryName = categoryInfo.category;
-            ticketTypeId = categoryInfo._id || categoryInfo.id || null; // Prefer _id from DB
-        } else if (ticketCategories.length > 0) { // Fallback if assignedCategoryName doesn't match any defined category
+            ticketTypeId = categoryInfo._id || categoryInfo.id || null;
+        } else if (ticketCategories.length > 0) {
             price = parseFloat(ticketCategories[0].price);
             categoryName = ticketCategories[0].category;
             ticketTypeId = ticketCategories[0]._id || ticketCategories[0].id || null;
         }
-    } else if (ticketCategories.length > 0) { // Fallback if section has no assigned category
+    } else if (ticketCategories.length > 0) {
         price = parseFloat(ticketCategories[0].price);
         categoryName = ticketCategories[0].category;
         ticketTypeId = ticketCategories[0]._id || ticketCategories[0].id || null;
@@ -118,7 +115,7 @@ const SeatSelectionPage = () => {
         return;
     }
 
-    const { price, categoryName, ticketTypeId } = getSeatDetails(sectionName); // Get all details
+    const { price, categoryName, ticketTypeId } = getSeatDetails(sectionName);
 
     const seatIdentifier = { section: sectionName, row: rowLetter, seat: seatNumber };
     const isSelected = selectedSeats.some(
@@ -135,8 +132,8 @@ const SeatSelectionPage = () => {
       setSelectedSeats(prevSeats => [...prevSeats, { 
         ...seatIdentifier, 
         price, 
-        category: categoryName, // Use the resolved category name
-        ticketTypeId: ticketTypeId // Add ticketTypeId here
+        category: categoryName,
+        ticketTypeId: ticketTypeId
       }]);
     }
   };
@@ -154,10 +151,10 @@ const SeatSelectionPage = () => {
         seat: s.seat, 
         category: s.category, 
         price: s.price,
-        ticketTypeId: s.ticketTypeId // Ensure ticketTypeId is passed
+        ticketTypeId: s.ticketTypeId
     }));
     
-    console.log("[SeatSelection] Proceeding with seats:", selectedSeatsData); // Log selected seats
+    console.log("[SeatSelection] Proceeding with seats:", selectedSeatsData);
     router.push(`/events/${eventId}?selectedSeatsData=${encodeURIComponent(JSON.stringify(selectedSeatsData))}&totalCost=${totalPrice.toFixed(2)}`);
   };
 
@@ -236,7 +233,7 @@ const SeatSelectionPage = () => {
   if (isLoading && !error && apiSeatingLayout.length === 0) {
     return (
         <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-sky-100 to-blue-100 p-4">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-sky-500 mb-4"></div>
+            <ArrowPathIcon className="h-16 w-16 text-sky-500 animate-spin mb-4" />
             <p className="text-sky-700 text-xl">Loading Seat Map for {eventName}...</p>
         </div>
     );
@@ -385,7 +382,6 @@ const SeatSelectionPage = () => {
                     className="bg-sky-100 text-sky-800 px-3.5 py-2 rounded-md text-sm font-medium shadow-sm border border-sky-200 whitespace-nowrap"
                   >
                     {seat.section} - {seat.row}{seat.seat} (${seat.price.toFixed(2)})
-                    {/* Log ticketTypeId for debugging: console.log(seat.ticketTypeId) */}
                   </span>
                 ))}
               </div>
@@ -406,10 +402,7 @@ const SeatSelectionPage = () => {
         >
           {isLoading && selectedSeats.length > 0 ? (
             <>
-              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
+              <ArrowPathIcon className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" />
               Processing...
             </>
           ) : selectedSeats.length > 0 ? (
@@ -420,6 +413,22 @@ const SeatSelectionPage = () => {
         </button>
       </div>
     </div>
+  );
+}
+
+// The main page component that wraps SeatSelectionClientLogic with Suspense
+const SeatSelectionPage = () => {
+  const LoadingFallback = () => (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-sky-100 to-blue-100 p-4">
+      <ArrowPathIcon className="h-16 w-16 text-sky-500 animate-spin mb-4" />
+      <p className="text-sky-700 text-xl">Loading Seat Selection...</p>
+    </div>
+  );
+
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <SeatSelectionClientLogic />
+    </Suspense>
   );
 };
 

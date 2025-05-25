@@ -81,11 +81,11 @@ export default function Headers() {
                     className="absolute right-0 top-full mt-1 w-48 rounded-lg bg-white shadow-lg border border-sky-100 py-2 z-20 pointer-events-auto"
                   >
                     {(session.user.role === 'admin' || session.user.role === 'organizer') && (
-                      <a href={getDashboardLink()} className="flex items-center gap-2 px-4 py-2 text-sky-700 hover:bg-sky-50 transition-colors">
+                      <Link href={getDashboardLink()} className="flex items-center gap-2 px-4 py-2 text-sky-700 hover:bg-sky-50 transition-colors">
                         <HomeIcon className="h-5 w-5 text-sky-400" /> Dashboard
-                      </a>
+                      </Link>
                     )}
-                    <a href="/profile" className="block px-4 py-2 text-sky-700 hover:bg-sky-50 transition-colors">Profile</a>
+                    <Link href="/profile" className="block px-4 py-2 text-sky-700 hover:bg-sky-50 transition-colors">Profile</Link>
                     <button
                       onClick={signOut}
                       className="block w-full text-left px-4 py-2 text-sky-700 hover:bg-sky-50 transition-colors"
@@ -138,9 +138,9 @@ export default function Headers() {
                 {status === 'authenticated' ? (
                   <>
                     {(session.user.role === 'admin' || session.user.role === 'organizer') && (
-                      <a href={getDashboardLink()} className="block px-2 py-2 rounded hover:bg-sky-50 text-sky-700 font-medium">Dashboard</a>
+                      <Link href={getDashboardLink()} className="block px-2 py-2 rounded hover:bg-sky-50 text-sky-700 font-medium">Dashboard</Link>
                     )}
-                    <a href="/profile" className="block px-2 py-2 rounded hover:bg-sky-50 text-sky-700 font-medium">Profile</a>
+                    <Link href="/profile" className="block px-2 py-2 rounded hover:bg-sky-50 text-sky-700 font-medium">Profile</Link>
                     <button
                       onClick={() => { setMobileMenuOpen(false); signOut(); }}
                       className="block w-full text-left px-2 py-2 rounded hover:bg-sky-50 text-sky-700 font-medium"

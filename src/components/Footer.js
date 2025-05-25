@@ -45,13 +45,13 @@ export default function Footer() {
                 { name: 'Waitlist', href: '/#waitlist' },
               ].map((link) => (
                 <li key={link.name}>
-                  <a 
+                  <Link 
                     href={link.href}
                     className="group flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200"
                   >
                     <ChevronRightIcon className="h-4 w-4 mr-2 text-sky-500 opacity-0 group-hover:opacity-100 transform -translate-x-2 group-hover:translate-x-0 transition-all duration-200" />
                     {link.name}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -85,12 +85,12 @@ export default function Footer() {
                   <span className="text-sm text-gray-500 dark:text-gray-400">
                     {trendingEvent.ticketsLeft === 0 ? 'Sold Out' : `${trendingEvent.ticketsLeft} tickets left`}
                   </span>
-                  <a 
+                  <Link 
                     href={`/events/${trendingEvent.name.toLowerCase().replace(/\s+/g, '-')}`}
                     className="text-sm text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 transition-colors"
                   >
                     View Details →
-                  </a>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -108,18 +108,18 @@ export default function Footer() {
               © {new Date().getFullYear()} PACE. All rights reserved.
             </p>
             <div className="flex space-x-8 mt-4 md:mt-0">
-              <a 
+              <Link 
                 href="/privacy" 
                 className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200"
               >
                 Privacy Policy
-              </a>
-              <a 
+              </Link>
+              <Link 
                 href="/terms" 
                 className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200"
               >
                 Terms of Service
-              </a>
+              </Link>
             </div>
           </div>
         </div>

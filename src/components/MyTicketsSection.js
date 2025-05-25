@@ -151,12 +151,12 @@ function MyTicketsSection() {
               You have no {activeTab} tickets at the moment.
             </p>
              {activeTab === 'upcoming' && (
-                <a 
+                <Link 
                     href="/#events" 
                     className="mt-4 inline-block px-6 py-2 bg-sky-500 text-white text-sm font-medium rounded-lg hover:bg-sky-600 transition-colors"
                 >
                     Explore Events
-                </a>
+                </Link>
             )}
           </div>
         ) : (

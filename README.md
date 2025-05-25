@@ -109,7 +109,6 @@ Follow these steps to get your development environment set up:
           "email": "admin@example.com",
           "password": "YourChosenPlainTextPassword", // The script will hash this
           "role": "admin" / "attendee"
-          // Add any other required fields from your User model
         }
         ```
     4.  **Run the Hashing Script:** From your terminal, in the project's root directory, execute the `hash-passwords.js` script.
